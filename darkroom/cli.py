@@ -102,7 +102,7 @@ def cmd_serve(a):
     import uvicorn
     from .server import create_app
     host = "0.0.0.0" if a.lan else a.host
-    token = a.token or os.environ.get("DARKROOM_TOKEN") or (secrets.token_urlsafe(9) if (a.lan or host not in ("127.0.0.1", "localhost", "::1")) else None)
+    token = None if a.no_token else (a.token or os.environ.get("DARKROOM_TOKEN") or (secrets.token_urlsafe(9) if (a.lan or host not in ("127.0.0.1", "localhost", "::1")) else None))
     url = f"http://{_lan_ip() if host == '0.0.0.0' else host}:{a.port}/" + (f"?token={token}" if token else "")
     print(f"Darkroom running (data in {a.data})\n  open: {url}")
     if a.lan:
@@ -158,6 +158,7 @@ def main(argv=None):
     v.add_argument("--data", default="darkroom_data")
     v.add_argument("--workers", type=int, default=1)
     v.add_argument("--lan", action="store_true", help="listen on the local network (for your phone) behind a private link/QR code")
+    v.add_argument("--no-token", action="store_true", help="disable the access token (only behind an already-private tunnel)")
     v.add_argument("--token", help="require this access token (auto-generated with --lan)")
     v.set_defaults(fn=cmd_serve)
 

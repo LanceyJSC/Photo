@@ -1,0 +1,13 @@
+# One-tap deploy on Render.com: New + > Blueprint > pick this repo.
+services:
+  - type: web
+    name: darkroom
+    runtime: docker
+    plan: standard          # 2 GB RAM; use pro (4 GB) for full-size RAW files
+    envVars:
+      - key: DARKROOM_TOKEN
+        generateValue: true  # shown in the Render dashboard; open https://<app>.onrender.com/?token=<value>
+    disk:
+      name: darkroom-data
+      mountPath: /data
+      sizeGB: 10

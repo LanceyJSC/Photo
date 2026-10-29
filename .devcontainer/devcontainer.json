@@ -1,0 +1,9 @@
+{
+  "name": "Darkroom",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "hostRequirements": {"cpus": 4, "memory": "8gb"},
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libgl1 libglib2.0-0 && pip install -e .",
+  "postAttachCommand": "nohup darkroom serve --host 0.0.0.0 --port 8765 --no-token --data /workspaces/darkroom_data > /tmp/darkroom.log 2>&1 &",
+  "forwardPorts": [8765],
+  "portsAttributes": {"8765": {"label": "Darkroom", "onAutoForward": "openBrowser"}}
+}
