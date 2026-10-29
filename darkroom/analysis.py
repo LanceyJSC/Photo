@@ -146,7 +146,7 @@ def _sky_mask(lab: np.ndarray) -> tuple[np.ndarray, float]:
 def _cascade():
     global _CASCADE
     if _CASCADE is None:
-        path = Path(__file__).parent / "data" / "lbpcascade_frontalface_opencv.xml"
+        path = Path(__file__).parent / "data" / "haarcascade_frontalface_alt2.xml"
         c = cv2.CascadeClassifier(str(path)) if path.exists() else None
         _CASCADE = c if c is not None and not c.empty() else False
     return _CASCADE
@@ -159,7 +159,7 @@ def _faces(L: np.ndarray) -> list:
     h, w = L.shape
     g = np.clip(L * 255, 0, 255).astype(np.uint8)
     g = cv2.equalizeHist(g)
-    found = c.detectMultiScale(g, scaleFactor=1.1, minNeighbors=6, minSize=(max(24, w // 24),) * 2)
+    found = c.detectMultiScale(g, scaleFactor=1.1, minNeighbors=5, minSize=(max(28, w // 22),) * 2)
     return [(x / w, y / h, fw / w, fh / h) for x, y, fw, fh in found]
 
 

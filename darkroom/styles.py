@@ -846,7 +846,7 @@ def get(style_id: str) -> Style:
 
 def catalog() -> list[dict]:
     return [{"id": s.id, "name": s.name, "category": s.category, "description": s.description,
-             "bw": s.is_bw} for s in STYLES]
+             "bw": s.is_bw, "photographer": s.photographer, "keywords": s.keywords[:10]} for s in STYLES]
 
 
 # --------------------------------------------------------------------------

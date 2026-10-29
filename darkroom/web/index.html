@@ -53,36 +53,19 @@
 
   <aside id="panel" hidden>
     <div class="panel-body">
-      <h2>What look are you going for?</h2>
-      <div class="ask">
-        <input id="lookText" type="text" placeholder="e.g. moody black &amp; white street, or &ldquo;like Salgado&rdquo;" autocomplete="off" enterkeyhint="go">
-        <button class="btn" id="matchBtn">Find</button>
-      </div>
-      <div id="matchNote" class="hint"></div>
-
+      <h2>Pick a look</h2>
+      <p class="sub" id="panelSub">Your photo in styles chosen for it. Tap one &mdash; I do the rest.</p>
+      <input id="search" type="search" placeholder="Search looks or photographers&hellip;" autocomplete="off" enterkeyhint="search">
       <div id="styleList"></div>
-
-      <h3>Strength <output id="strengthOut">100%</output></h3>
-      <input type="range" id="strength" min="0" max="150" value="100">
-
-      <details id="adjust">
-        <summary>Fine-tune</summary>
-        <div id="sliders"></div>
+      <details class="export">
+        <summary>Save options</summary>
+        <div class="row"><label><input type="checkbox" class="fmt" value="tif"> Also save 16-bit TIFF</label></div>
       </details>
-
-      <details>
-        <summary>Export</summary>
-        <div class="row"><label><input type="checkbox" class="fmt" value="jpg" checked> JPEG</label>
-          <label><input type="checkbox" class="fmt" value="tif"> 16-bit TIFF</label>
-          <label><input type="checkbox" class="fmt" value="png"> 16-bit PNG</label></div>
-        <div class="row"><label>Max long side (px) <input id="maxSide" type="number" inputmode="numeric" min="256" max="20000" placeholder="original"></label></div>
-      </details>
-
       <div id="notes"></div>
     </div>
     <div class="actionbar">
       <label class="chk"><input type="checkbox" id="applyAll"> All waiting photos</label>
-      <button class="btn primary" id="editBtn">Edit photo</button>
+      <button class="btn primary" id="editBtn" disabled>Choose a look</button>
     </div>
   </aside>
 </main>

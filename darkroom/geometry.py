@@ -57,7 +57,7 @@ def _robust_line_fit(x: np.ndarray, y: np.ndarray, w: np.ndarray, iters: int = 4
 
 
 def estimate_upright(rgb: np.ndarray, vertical: bool = True, horizontal: bool = False,
-                     max_rot: float = 7.0, max_key: float = 0.30):
+                     max_rot: float = 7.0, max_key: float = 0.30, min_len_frac: float = 0.05):
     """Return a dict {rot_deg, vkey, hkey, confidence, n_v, n_h}.
 
     Vertical lines follow ``x = x0 + m*y`` and are made parallel by
@@ -68,7 +68,7 @@ def estimate_upright(rgb: np.ndarray, vertical: bool = True, horizontal: bool = 
     h, w = small.shape[:2]
     Y = color.luminance(small)
     gray = np.sqrt(np.clip(Y, 0, 1))
-    segs = _segments(gray)
+    segs = _segments(gray, min_len_frac)
     res = {"rot": 0.0, "vkey": 0.0, "hkey": 0.0, "confidence": 0.0, "n_v": 0, "n_h": 0, "scale": 1.0}
     if len(segs) < 6:
         return res

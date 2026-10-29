@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import color, edit, export, pipeline, raw, styles
+from . import color, edit, export, pipeline, raw, recommend, styles
 
 PREVIEW_SIDE = 1800
 THUMB_SIDE = 900
@@ -47,6 +47,10 @@ class Job:
     size: list = field(default_factory=list)
     has_preview: bool = False
     has_thumb: bool = False
+    kind: str = ""                      # portrait | landscape | architecture | night | street
+    recommended: list = field(default_factory=list)
+    options_ready: list = field(default_factory=list)
+    options_done: bool = False
 
 
 def _safe_name(name: str) -> str:
@@ -63,6 +67,7 @@ class JobManager:
         self.jobs: dict[str, Job] = {}
         self.lock = threading.RLock()
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="darkroom")
+        self.opt_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="darkroom-looks")   # look previews never block real edits
         self._state = self.root / "jobs.json"
         self._load()
 
@@ -110,6 +115,7 @@ class JobManager:
             self.jobs[jid] = job
             self._save()
         self.pool.submit(self._make_thumb, jid)
+        self.opt_pool.submit(self._make_options, jid)
         return job
 
     def get(self, jid: str) -> Job:
@@ -173,6 +179,38 @@ class JobManager:
             self._update(job, has_thumb=True, size=[ph.rgb.shape[1], ph.rgb.shape[0]], version=job.version + 1)
         except Exception as e:  # noqa: BLE001 - surfaced to the UI instead
             self._update(job, status="error", error=f"Could not read this file: {e}")
+        self._save()
+
+    def option_path(self, jid: str, style_id: str) -> Path:
+        return self.root / "previews" / jid / "opt" / f"{style_id}.jpg"
+
+    def _make_options(self, jid: str):
+        """Render the photo in the best-fitting looks first, then the whole library."""
+        job = self.jobs.get(jid)
+        if job is None:
+            return
+        d = self.root / "previews" / jid / "opt"
+        d.mkdir(parents=True, exist_ok=True)
+
+        def order(an, rgb):
+            kind, rec = recommend.recommend(an, rgb)
+            self._update(job, kind=kind, recommended=rec)
+            self._save()
+            return rec + [s.id for s in styles.STYLES if s.id not in rec]
+
+        def ready(sid, jpg):
+            (d / f"{sid}.jpg").write_bytes(jpg)
+            with self.lock:
+                if sid not in job.options_ready:
+                    job.options_ready.append(sid)
+
+        try:
+            edit.option_previews(job.src, order, 640, ready)
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            if job.status == "awaiting_style":
+                self._update(job, status="error", error=f"Could not prepare looks: {e}")
+        self._update(job, options_done=True)
         self._save()
 
     def _run(self, jid: str):

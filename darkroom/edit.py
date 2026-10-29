@@ -121,3 +121,25 @@ def process(path, out_dir, style=None, text=None, strength=1.0, modifiers=None,
     outs["sidecar"] = str(side)
     say("done", 1.0)
     return Result(outs, r, notes, an.summary(), (w, h), time.time() - t0)
+
+
+def option_previews(path, style_ids, side: int = 640, on_ready=None):
+    """Render the *same* photo in many looks, decoding and analysing only once.
+
+    ``style_ids`` is a list, or a callable ``(analysis, rgb) -> list`` so the order can
+    depend on the scene.  ``on_ready(style_id, jpeg_bytes)`` fires as each look finishes,
+    so a UI can show them as they arrive."""
+    ph, full_long = _load(path, side)
+    an = analysis.analyze(ph.rgb, ph.is_raw)
+    ids = style_ids(an, ph.rgb) if callable(style_ids) else style_ids
+    for sid in ids:
+        try:
+            st = styles.get(sid)
+            r, _ = director.plan(ph.rgb, an, st, 1.0)
+            enc, _ = render_recipe(ph, r, an, full_long)
+            if on_ready:
+                on_ready(sid, export.jpeg_bytes(pipeline.quantize8(enc), 82))
+        except Exception:  # noqa: BLE001 - one bad look must not stop the rest
+            import traceback
+            traceback.print_exc()
+    return an

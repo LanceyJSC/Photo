@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "httpx"]
+dev = ["pytest", "httpx", "scikit-image"]
 
 [project.scripts]
 darkroom = "darkroom.cli:main"

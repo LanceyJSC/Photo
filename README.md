@@ -17,7 +17,7 @@ darkroom serve --lan        # same, reachable from your phone (prints a private 
 darkroom styles             # list the 56 looks
 ```
 
-In the web app: add photos → type or click the look you want → **Edit**. A preview appears within seconds; the full-resolution export renders in the background (queue on the left, one photo at a time, state survives restarts). Drag the before/after handle, nudge brightness/contrast/warmth, change strength, re-edit.
+In the web app you never edit anything yourself: **add photos → Darkroom shows *your* photo rendered in looks chosen for it (portrait looks for faces, architecture looks for buildings, night looks for night…) → tap one → done.** The full list of 56 looks (including the photographer ones) is below the recommendations, with search. The full-resolution export renders in the background (queue on the left, one photo at a time, state survives restarts); drag the before/after handle to compare.
 
 `--explain` (CLI) / "What I did" (web) lists the decisions made for that photo, e.g.
 
@@ -51,13 +51,14 @@ Tone: highlights -58 to hold 0.31% clipping
 
 Describe a look in words (`"dark moody portrait, warm, grainy"`) and it picks the closest style and turns the adjectives into slider moves.
 
-## On your phone
+## On your phone (no Xcode, no App Store)
 
-```bash
-darkroom serve --lan
-```
+Darkroom is a web app, so the phone only needs a browser. Open it in Safari/Chrome and choose *Add to Home Screen* to install it like an app. The editing itself runs on whatever machine runs Darkroom, so you need one of:
 
-It prints a link and a QR code (with a private access token — the app is locked without it). Open it on a phone on the same Wi-Fi, then *Add to Home Screen* to install it as an app. The layout is built for touch: filmstrip, big before/after slider you drag with a finger, style cards in a thumb-friendly sheet, a pinned **Edit** button, camera button, upload progress, and **Save / Share** straight to Photos. iPhone **HEIC** and ProRAW **DNG** are supported; the app also registers as a *Share → Darkroom* target on Android. Editing runs on the computer running Darkroom, so closing the browser doesn't stop the job.
+* **Your computer at home/office** — `darkroom serve --lan` prints a private link and QR code; scan it with the phone on the same Wi-Fi.
+* **A small hosted server** (so it works from anywhere, including a phone with no computer) — a `Dockerfile` is included; deploy it to Fly.io / Render / a VPS, set `DARKROOM_TOKEN` to a long secret, and open `https://your-host/?token=…` once on the phone. Expect to need at least ~4 GB RAM for full-size RAW files.
+
+The layout is built for touch: filmstrip, tap-a-look grid, finger-drag before/after slider, pinned **Apply** button, camera button, upload progress, and **Save / Share** to Photos. iPhone **HEIC** and ProRAW **DNG** work (iOS may convert photos to JPEG/HEIC when picked from the library; pick from *Files* to keep the DNG). The *Share → Darkroom* target works on Android only; iOS doesn't support web share targets.
 
 ## How the photographer looks were made
 
@@ -77,6 +78,6 @@ pytest      # colour maths, RAW decode (synthetic DNGs), geometry, every style, 
 * The styles are hand-authored from established professional practice (genre conventions, film-stock characteristics, standard retouching workflows), not machine-learned from a dataset. They adapt to each photo, but taste is subjective — use *strength* and the fine-tune sliders.
 * Photographer styles are approximations from sparse public information (see above); Maier, Hido, Frank and similar entries lean mostly on interpretation of their published work.
 * RAW decoding was verified with synthetic DNGs; real camera files weren't reachable from the build environment. LibRaw handles the real formats, but expect to tune on your own cameras.
-* Face detection uses a bundled LBP cascade (frontal faces only); sky detection is colour/gradient based. If nothing is detected, those local steps are skipped.
+* Face detection uses OpenCV's bundled Haar cascade (frontal faces only); sky detection is colour/gradient based. If nothing is detected, those local steps are skipped.
 * Auto-upright needs visible straight lines; with too few lines or low confidence it does nothing.
 * A 24 MP RAW takes about 40 s and ~3 GB RAM on 4 cores; previews take 1–2 s.

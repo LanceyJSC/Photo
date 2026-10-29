@@ -33,7 +33,8 @@ class MatchRequest(BaseModel):
 def job_json(j) -> dict:
     d = {k: getattr(j, k) for k in ("id", "name", "status", "stage", "progress", "style", "text", "strength",
                                    "modifiers", "formats", "notes", "analysis", "error", "version", "size",
-                                   "has_preview", "has_thumb", "max_side")}
+                                   "has_preview", "has_thumb", "max_side", "kind", "recommended", "options_ready",
+                                   "options_done")}
     d["downloads"] = {k: f"/api/jobs/{j.id}/download/{k}" for k in j.outputs}
     if j.style:
         try:
@@ -145,6 +146,18 @@ def create_app(data_dir: str | Path | None = None, workers: int = 1, token: str 
         if not p.exists():
             raise HTTPException(404, "not ready")
         return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/jobs/{jid}/option/{style_id}")
+    def api_option(jid: str, style_id: str):
+        _job(jid)
+        try:
+            styles.get(style_id)
+        except KeyError:
+            raise HTTPException(404) from None
+        p = mgr.option_path(jid, style_id)
+        if not p.exists():
+            raise HTTPException(404, "not ready")
+        return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/jobs/{jid}/download/{kind}")
     def api_download(jid: str, kind: str):

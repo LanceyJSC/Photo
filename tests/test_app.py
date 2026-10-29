@@ -102,3 +102,24 @@ def test_share_target_adds_job(tmp_path, dng):
     r = client.post("/share", files=[("files", ("scene.dng", dng.read_bytes()))])
     assert r.status_code == 303
     assert len(client.get("/api/jobs").json()) == 1
+
+
+def test_photo_is_previewed_in_recommended_looks(dng, tmp_path):
+    client = TestClient(create_app(tmp_path / "data"))
+    jid = client.post("/api/upload", files=[("files", ("scene.dng", dng.read_bytes()))]).json()["jobs"][0]["id"]
+    t = time.time()
+    while time.time() - t < 90:
+        j = client.get(f"/api/jobs/{jid}").json()
+        if j["options_done"]:
+            break
+        time.sleep(0.3)
+    assert j["options_done"] and j["kind"] in ("portrait", "landscape", "architecture", "night", "street")
+    assert j["recommended"][0] == "natural" and len(j["recommended"]) >= 6
+    assert set(j["recommended"]) <= set(j["options_ready"])
+    from darkroom import styles
+    assert len(j["options_ready"]) == len(styles.STYLES)
+    r = client.get(f"/api/jobs/{jid}/option/{j['recommended'][1]}")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/api/jobs/{jid}/option/not_a_style").status_code == 404
+    # tapping a look = one request, no sliders involved
+    assert client.post(f"/api/jobs/{jid}/edit", json={"style": j["recommended"][1]}).status_code == 200

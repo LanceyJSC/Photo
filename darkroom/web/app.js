@@ -80,12 +80,15 @@ function renderViewer() {
   const bs = j.has_thumb ? `/api/jobs/${j.id}/image/before?v=${j.version}` : "";
   const as = j.has_preview ? `/api/jobs/${j.id}/image/after?v=${j.version}` : "";
   if (b.dataset.src !== bs) { b.src = bs; b.dataset.src = bs; }
-  if (a.dataset.src !== as) { a.src = as; a.dataset.src = as; }
-  a.style.display = as ? "" : "none";
-  $("#handle").style.display = as ? "" : "none";
-  $("#afterTag").style.display = as ? "" : "none";
-  if (!as) $("#compare").style.setProperty("--pos", "100%");
-  else if (!$("#compare").dataset.moved) $("#compare").style.setProperty("--pos", "50%");
+  const showing = state.previewing && j.status !== "running" && j.status !== "queued";
+  if (!showing) {
+    if (a.dataset.src !== as) { a.src = as; a.dataset.src = as; }
+    a.style.display = as ? "" : "none";
+    $("#handle").style.display = as ? "" : "none";
+    $("#afterTag").style.display = as ? "" : "none";
+    if (!as) $("#compare").style.setProperty("--pos", "100%");
+    else if (!$("#compare").dataset.moved) $("#compare").style.setProperty("--pos", "50%");
+  }
   $("#fileName").textContent = j.name;
   const busy = j.status === "running" || j.status === "queued";
   $("#busy").hidden = !(busy && !j.has_preview);
@@ -128,83 +131,129 @@ function renderViewer() {
   ["pointerup", "pointercancel"].forEach(t => window.addEventListener(t, () => (drag = false)));
 })();
 
-// ---------------------------------------------------------------- panel
+// ---------------------------------------------------------------- panel (look picker)
+let tiles = {};            // style id -> tile element
+function buildTiles() {
+  const list = $("#styleList");
+  if (list.dataset.built || !state.styles) return;
+  list.dataset.built = "1";
+  const mk = (title, id) => {
+    const h = document.createElement("div"); h.className = "cat"; h.textContent = title; h.id = id || ""; list.appendChild(h);
+    const g = document.createElement("div"); g.className = "tiles"; list.appendChild(g); return g;
+  };
+  state.recGrid = mk("Best for this photo", "recHead");
+  state.cats = {};
+  for (const [cat, items] of Object.entries(state.styles.categories)) {
+    const g = mk(cat);
+    g.previousSibling.dataset.cat = cat;
+    for (const s of items) {
+      const t = tile(s);
+      g.appendChild(t);
+    }
+  }
+}
+function tile(s, clone) {
+  const b = document.createElement("button");
+  b.className = "tile"; b.dataset.id = s.id;
+  b.innerHTML = '<div class="ph"><img alt="" loading="lazy" draggable="false"></div><b></b><small></small>';
+  const parts = s.name.split(" – ");
+  $("b", b).textContent = s.photographer ? parts[0] : (parts[1] || parts[0]);
+  $("small", b).textContent = s.photographer ? (parts[1] || "") : s.category;
+  b.title = s.description;
+  b.dataset.search = (s.name + " " + s.category + " " + s.description + " " + (s.keywords || []).join(" ")).toLowerCase();
+  b.onclick = () => choose(s.id);
+  (tiles[s.id] = tiles[s.id] || []).push(b);
+  return b;
+}
+function allStyles() { return Object.values(state.styles.categories).flat(); }
+function choose(id) {
+  state.chosen = id;
+  markChosen();
+  const j = cur(); if (!j) return;
+  const opt = `/api/jobs/${j.id}/option/${id}`;
+  // show the chosen look large straight away (before the full-quality edit exists)
+  const a = $("#imgAfter"); a.src = opt; a.dataset.src = opt; a.style.display = ""; state.previewing = id;
+  $("#handle").style.display = ""; $("#afterTag").style.display = "";
+  const c = $("#compare"); if (!c.dataset.moved) c.style.setProperty("--pos", "0%");
+  updateEditBtn();
+}
+function markChosen() {
+  document.querySelectorAll(".tile").forEach(t => t.classList.toggle("sel", t.dataset.id === state.chosen));
+}
+function updateEditBtn() {
+  const j = cur(); const b = $("#editBtn");
+  const busy = j && (j.status === "running" || j.status === "queued");
+  const name = state.chosen ? allStyles().find(s => s.id === state.chosen)?.name : null;
+  b.disabled = busy || !state.chosen;
+  b.textContent = busy ? "Editing…" : name ? "Apply: " + name.replace(/^[^–]+–\s*/, "") : "Choose a look";
+}
+function refreshTiles() {
+  const j = cur(); if (!j) return;
+  buildTiles();
+  // recommended row
+  const rec = j.recommended || [];
+  const g = state.recGrid;
+  const sig = j.id + ":" + rec.join(",");
+  if (g.dataset.sig !== sig) {
+    g.dataset.sig = sig; g.innerHTML = "";
+    const byId = Object.fromEntries(allStyles().map(s => [s.id, s]));
+    tiles.__rec = [];
+    for (const id of rec) if (byId[id]) { const t = tile(byId[id]); t.classList.add("rec"); g.appendChild(t); }
+    $("#recHead").hidden = g.hidden = !rec.length;
+    const kinds = { portrait: "portrait", landscape: "landscape", architecture: "architecture", night: "night scene", street: "street / general scene" };
+    $("#recHead").textContent = rec.length ? `Best for this photo (looks like a ${kinds[j.kind] || "photo"})` : "";
+  }
+  const ready = new Set(j.options_ready || []);
+  document.querySelectorAll(".tile").forEach(t => {
+    const img = $("img", t), id = t.dataset.id;
+    const url = ready.has(id) ? `/api/jobs/${j.id}/option/${id}` : "";
+    if (img.dataset.u !== url + j.id) { img.dataset.u = url + j.id; if (url) img.src = url; else img.removeAttribute("src"); }
+    t.classList.toggle("wait", !ready.has(id));
+  });
+  $("#panelSub").textContent = j.options_done ? "Your photo in styles chosen for it. Tap one — I do the rest."
+    : `Preparing looks for your photo… ${ready.size} ready`;
+  markChosen();
+}
+function filterTiles() {
+  const q = $("#search").value.trim().toLowerCase();
+  document.querySelectorAll("#styleList .tiles").forEach(g => {
+    let any = false;
+    g.querySelectorAll(".tile").forEach(t => { const m = !q || q.split(/\s+/).every(w => t.dataset.search.includes(w)); t.hidden = !m; any = any || m; });
+    g.previousSibling.hidden = !any || (g === state.recGrid && (q || !g.children.length));
+    g.hidden = !any || (g === state.recGrid && !!q);
+  });
+}
+$("#search").addEventListener("input", filterTiles);
+
 function renderPanel() {
   const j = cur();
-  if (!j) return;
-  const list = $("#styleList");
-  if (!state.styles) return;
-  if (!list.dataset.built) {
-    for (const [cat, items] of Object.entries(state.styles.categories)) {
-      const h = document.createElement("div"); h.className = "cat"; h.textContent = cat; list.appendChild(h);
-      const g = document.createElement("div"); g.className = "styles";
-      for (const s of items) {
-        const b = document.createElement("button");
-        b.className = "style"; b.dataset.id = s.id;
-        b.innerHTML = `<b></b><span></span>`;
-        $("b", b).textContent = s.name; $("span", b).textContent = s.description;
-        b.onclick = () => { state.chosen = s.id; state.textMods = {}; $("#matchNote").textContent = ""; $("#lookText").value = ""; markStyle(); };
-        g.appendChild(b);
-      }
-      list.appendChild(g);
-    }
-    list.dataset.built = "1";
-    const sl = $("#sliders");
-    for (const [k, nm] of SLIDERS) {
-      const row = document.createElement("div"); row.className = "sl";
-      const min = ["grain", "fade", "vignette"].includes(k) ? 0 : -100;
-      row.innerHTML = `<span>${nm}</span><input type="range" min="${min}" max="100" value="0" data-k="${k}"><output>0</output>`;
-      const inp = $("input", row);
-      inp.oninput = () => { $("output", row).textContent = inp.value; state.mods[k] = inp.value / 100; };
-      sl.appendChild(row);
-    }
-  }
-  if (j.id !== state.panelFor) {                 // load the job's last settings
-    state.panelFor = j.id;
-    state.chosen = j.style || state.styles.default;
-    $("#strength").value = Math.round(j.strength * 100); $("#strengthOut").textContent = Math.round(j.strength * 100) + "%";
-    $("#lookText").value = j.text || "";
-    state.mods = { ...(j.modifiers || {}) }; state.textMods = {};
-    document.querySelectorAll("#sliders input").forEach(i => { const v = Math.round((state.mods[i.dataset.k] || 0) * 100); i.value = v; i.nextElementSibling.textContent = v; });
-    markStyle();
+  if (!j || !state.styles) return;
+  if (j.id !== state.panelFor) {
+    state.panelFor = j.id; state.chosen = j.style || null; state.previewing = null;
+    $("#search").value = "";
     renderNotes(j);
   }
-  const busy = j.status === "running" || j.status === "queued";
-  $("#editBtn").disabled = busy;
-  $("#editBtn").textContent = busy ? "Editing…" : j.status === "done" ? "Re-edit with these settings" : "Edit photo";
+  refreshTiles(); filterTiles(); updateEditBtn();
 }
-function markStyle() { document.querySelectorAll(".style").forEach(b => b.classList.toggle("sel", b.dataset.id === state.chosen && !$("#lookText").value)); }
 function renderNotes(j) {
   const n = $("#notes");
   if (!j.notes || !j.notes.length) { n.innerHTML = ""; return; }
   n.innerHTML = "<h3>What I did</h3><ul></ul>";
   for (const t of j.notes) { const li = document.createElement("li"); li.textContent = t; $("ul", n).appendChild(li); }
 }
-$("#strength").oninput = e => ($("#strengthOut").textContent = e.target.value + "%");
-$("#matchBtn").onclick = async () => {
-  const t = $("#lookText").value.trim(); if (!t) return;
-  const m = await api("/api/match", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: t }) });
-  state.chosen = m.style; state.textMods = m.modifiers;
-  const extra = Object.entries(m.modifiers).map(([k, v]) => `${k} ${v > 0 ? "+" : ""}${v.toFixed(1)}`).join(", ");
-  $("#matchNote").textContent = `→ ${m.name}${extra ? " (" + extra + ")" : ""}`;
-  document.querySelectorAll(".style").forEach(b => b.classList.toggle("sel", b.dataset.id === m.style));
-};
-$("#lookText").addEventListener("keydown", e => { if (e.key === "Enter") $("#matchBtn").click(); });
 
 $("#editBtn").onclick = async () => {
+  if (!state.chosen) return;
   const targets = $("#applyAll").checked ? state.jobs.filter(j => j.status === "awaiting_style" || j.id === state.sel) : [cur()];
-  const formats = [...document.querySelectorAll(".fmt:checked")].map(x => x.value);
-  const ms = $("#maxSide").value;
-  const text = $("#lookText").value.trim();
-  const body = {
-    style: state.chosen, strength: $("#strength").value / 100,
-    modifiers: { ...state.textMods, ...state.mods }, formats: formats.length ? formats : ["jpg"],
-    max_side: ms ? parseInt(ms) : null,
-  };
+  const formats = ["jpg", ...[...document.querySelectorAll(".fmt:checked")].map(x => x.value)];
+  state.previewing = null;
   for (const j of targets) {
-    try { await api(`/api/jobs/${j.id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
-    catch (e) { alert(j.name + ": " + e.message); }
+    try {
+      await api(`/api/jobs/${j.id}/edit`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style: state.chosen, strength: 1, modifiers: {}, formats }) });
+    } catch (e) { alert(j.name + ": " + e.message); }
   }
+  $("#compare").dataset.moved = "";
   refresh();
 };
 

@@ -200,3 +200,17 @@ def test_photographer_styles_exist_with_sources():
     assert s.id == "ph_adams"
     s, _, _ = styles.match("daido moriyama")
     assert s.id == "ph_moriyama"
+
+
+def test_face_detector_actually_loads_and_finds_faces():
+    sk = pytest.importorskip("skimage.data")
+    assert analysis._cascade(), "bundled face cascade failed to load"
+    import cv2
+    img = cv2.resize(sk.astronaut() / 255.0, (640, 640)).astype(np.float32)
+    an = analysis.analyze(color.display_to_pro(img))
+    assert len(an.faces) >= 1
+    from darkroom import recommend
+    assert recommend.scene_kind(an) == "portrait"
+    assert recommend.recommend(an)[1][1] in ("portrait_natural", "ph_mccurry")
+    chelsea = cv2.resize(sk.chelsea() / 255.0, (640, 480)).astype(np.float32)   # a cat is not a face
+    assert analysis.analyze(color.display_to_pro(chelsea)).faces == []

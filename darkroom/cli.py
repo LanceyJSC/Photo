@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
@@ -101,7 +102,7 @@ def cmd_serve(a):
     import uvicorn
     from .server import create_app
     host = "0.0.0.0" if a.lan else a.host
-    token = a.token or (secrets.token_urlsafe(9) if (a.lan or host not in ("127.0.0.1", "localhost", "::1")) else None)
+    token = a.token or os.environ.get("DARKROOM_TOKEN") or (secrets.token_urlsafe(9) if (a.lan or host not in ("127.0.0.1", "localhost", "::1")) else None)
     url = f"http://{_lan_ip() if host == '0.0.0.0' else host}:{a.port}/" + (f"?token={token}" if token else "")
     print(f"Darkroom running (data in {a.data})\n  open: {url}")
     if a.lan:
