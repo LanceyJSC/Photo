@@ -18,7 +18,7 @@ data = ("window.__DATA__=" + json.dumps(export(), separators=(",", ":")) + ";\n"
         "window.__FACE__=" + json.dumps(export_face(), separators=(",", ":")) + ";\n"
         "window.__GROUPS__=" + json.dumps(groups(vision["labels"]), separators=(",", ":")) + ";\n"
         "window.__VISION__=" + json.dumps(vision, separators=(",", ":")) + ";")
-fragment = tpl.replace("/*__DATA__*/", data).replace("/*__ENGINE__*/", (ROOT / "browser" / "vision_engine.js").read_text())
+fragment = tpl.replace("/*__DATA__*/", data).replace("/*__ENGINE__*/", (ROOT / "browser" / "vision_engine.js").read_text()).replace("/*__DNG__*/", (ROOT / "browser" / "dng_decoder.js").read_text())
 out_frag = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "browser" / "darkroom.fragment.html"
 out_frag.write_text(fragment)
 head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'

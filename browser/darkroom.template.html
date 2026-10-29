@@ -80,7 +80,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 /* bottom bar */
 .bar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding-block:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .bar .wrap{display:flex;gap:10px}
-.bar .primary{flex:1;min-height:48px;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.bar .primary{flex:1;min-height:48px;font-size:14.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;display:block;text-align:center;line-height:46px;padding:0 10px}
 .bar #hold{flex:none;touch-action:none;user-select:none;-webkit-user-select:none}
 .bar #savePng{flex:none}
 .note{color:var(--mute);font-size:12.5px;margin-top:22px}
@@ -117,7 +117,8 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
       <div><b>56 looks</b><span>Genres, film stocks and 21 photographers.</span></div>
       <div><b>Adapts to the shot</b><span>Exposure, highlights, skin and sky are measured first.</span></div>
     </div>
-    <p class="note">This version edits JPEG and HEIC photos up to about 2600 px on the long side. RAW needs the desktop app.</p>
+    <div class="row" style="margin-top:14px"><label class="btn" for="pickRaw" style="min-height:46px">Open an iPhone RAW (DNG) from Files</label><input id="pickRaw" type="file" accept=".dng,image/x-adobe-dng" hidden></div>
+    <p class="note"><b>iPhone RAW:</b> Apple's photo picker turns RAW into JPEG, which throws the RAW away. In Photos tap Share, then Save to Files, then pick the .DNG here. ProRAW and RAW from apps like Halide or Lightroom work. RAW is read at up to about 2800 px on the long side; JPEG and HEIC at 3200 px.</p>
   </section>
 
   <section id="app" hidden>
@@ -155,6 +156,9 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 <script type="text/plain" id="visionSrc">
 /*__ENGINE__*/
 </script>
+<script type="text/plain" id="dngSrc">
+/*__DNG__*/
+</script>
 <script>
 "use strict";
 /* ============================================================ helpers */
@@ -172,11 +176,11 @@ function enc(v) { v = v < 0 ? 0 : v > 1 ? 1 : v; return v <= 0.0031308 ? v * 12.
 
 /** ImageData -> planar Oklab image, with optional white-balance gains applied in linear light */
 function toLab(id, gains) {
-  const w = id.width, h = id.height, n = w * h, d = id.data;
+  const w = id.width, h = id.height, n = w * h, d = id.data, lin = id.lin;
   const L = new Float32Array(n), A = new Float32Array(n), B = new Float32Array(n);
   const gr = gains ? gains[0] : 1, gg = gains ? gains[1] : 1, gb = gains ? gains[2] : 1;
   for (let i = 0, j = 0; i < n; i++, j += 4) {
-    const r = LIN[d[j]] * gr, g = LIN[d[j + 1]] * gg, b = LIN[d[j + 2]] * gb;
+    const r = (lin ? lin[i * 3] : LIN[d[j]]) * gr, g = (lin ? lin[i * 3 + 1] : LIN[d[j + 1]]) * gg, b = (lin ? lin[i * 3 + 2] : LIN[d[j + 2]]) * gb;
     const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
     const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
     const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
@@ -655,6 +659,16 @@ function warpImage(id, rotDeg, vkeyNorm) {
   const fits = k => [[-1, -1], [1, -1], [1, 1], [-1, 1]].every(q => inside(w / 2 + q[0] * k * w / 2, h / 2 + q[1] * k * h / 2));
   let k = 1; if (!fits(1)) { let lo = 0.3, hi = 1; for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; } k = lo * 0.995; }
   const cw = Math.max(8, Math.floor(w * k)), ch = Math.max(8, Math.floor(h * k)), x0 = Math.ceil(w / 2 - cw / 2), y0 = Math.ceil(h / 2 - ch / 2);
+  if (id.lin) {
+    const src = id.lin, o = new Float32Array(cw * ch * 3);
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+      const X = x + x0, Y = y + y0, z = inv[2][0] * X + inv[2][1] * Y + inv[2][2];
+      const sx = clamp((inv[0][0] * X + inv[0][1] * Y + inv[0][2]) / z, 0, w - 1.001), sy = clamp((inv[1][0] * X + inv[1][1] * Y + inv[1][2]) / z, 0, h - 1.001);
+      const ix = sx | 0, iy = sy | 0, fx = sx - ix, fy = sy - iy, p00 = (iy * w + ix) * 3, p10 = p00 + 3, p01 = p00 + w * 3, p11 = p01 + 3, q = (y * cw + x) * 3;
+      for (let c2 = 0; c2 < 3; c2++) o[q + c2] = (src[p00 + c2] * (1 - fx) + src[p10 + c2] * fx) * (1 - fy) + (src[p01 + c2] * (1 - fx) + src[p11 + c2] * fx) * fy;
+    }
+    return { width: cw, height: ch, lin: o, isRaw: id.isRaw };
+  }
   const out = new ImageData(cw, ch), d = id.data, o = out.data;
   for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
     const X = x + x0, Y = y + y0, z = inv[2][0] * X + inv[2][1] * Y + inv[2][2];
@@ -780,17 +794,17 @@ function percentiles(arr, qs, lo, hi) {
   return out;
 }
 function analyze(id) {
-  const lab = toLab(id), { w, h, L, a, b } = lab, n = w * h, d = id.data;
+  const lab = toLab(id), { w, h, L, a, b } = lab, n = w * h, d = id.data, lin = id.lin;
   const Y = new Float32Array(n); let clip = 0, sumC = 0, sk = 0;
   const C = new Float32Array(n);
   for (let i = 0, j = 0; i < n; i++, j += 4) {
-    Y[i] = 0.2126 * LIN[d[j]] + 0.7152 * LIN[d[j + 1]] + 0.0722 * LIN[d[j + 2]];
-    if (d[j] >= 253 || d[j + 1] >= 253 || d[j + 2] >= 253) clip++;
+    if (lin) { const r = lin[i * 3], g = lin[i * 3 + 1], bb = lin[i * 3 + 2]; Y[i] = 0.2126 * r + 0.7152 * g + 0.0722 * bb; if (r >= 0.98 || g >= 0.98 || bb >= 0.98) clip++; }
+    else { Y[i] = 0.2126 * LIN[d[j]] + 0.7152 * LIN[d[j + 1]] + 0.0722 * LIN[d[j + 2]]; if (d[j] >= 253 || d[j + 1] >= 253 || d[j + 2] >= 253) clip++; }
     C[i] = Math.hypot(a[i], b[i]); sumC += C[i];
   }
   const qs = [0.5, 2, 10, 25, 50, 75, 90, 98, 99.5];
   const yp = percentiles(Y, qs, 0, 1), lp = percentiles(L, qs, 0, 1);
-  const an = { w, h, lp, yp, dr: Math.log2(Math.max(yp[99.5], 1e-4) / Math.max(yp[0.5], 1e-5)), clip: clip / n, chroma: sumC / n };
+  const an = { raw: !!id.isRaw, w, h, lp, yp, dr: Math.log2(Math.max(yp[99.5], 1e-4) / Math.max(yp[0.5], 1e-5)), clip: clip / n, chroma: sumC / n };
   const cp = percentiles(C, [90], 0, 0.4); an.mono = cp[90] < 0.012;
   // colour cast from near-neutral mid-tones
   const sa = [], sb = [];
@@ -929,19 +943,19 @@ function solveTone(proxy, r, targets, an) {
   const notes = [], keep = Math.max(targets.preserve_key == null ? 0.25 : targets.preserve_key, an.night ? 0.7 : 0);
   let st = tonalStats(proxy, r);
   const targetKey = targets.median * (1 - keep) + st.key * keep, base = r.exposure.ev;
-  let lo = -1.5, hi = 1.5;
-  for (let i = 0; i < 11; i++) { const mid = (lo + hi) / 2; r.exposure.ev = base + mid; if (tonalStats(proxy, r).key < targetKey) lo = mid; else hi = mid; }
+  const R = an.raw ? 3.5 : 1.5; let lo = -R, hi = R;
+  for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; r.exposure.ev = base + mid; if (tonalStats(proxy, r).key < targetKey) lo = mid; else hi = mid; }
   r.exposure.ev = base + (lo + hi) / 2; st = tonalStats(proxy, r);
   notes.push(`Exposure ${r.exposure.ev >= 0 ? "+" : ""}${r.exposure.ev.toFixed(2)} EV to reach the look's brightness`);
-  const maxClip = targets.max_clip == null ? 0.004 : targets.max_clip, hiT = targets.hi == null ? 0.96 : targets.hi, hl0 = r.tone.highlights, floorHl = hl0 - 45;
+  const maxClip = targets.max_clip == null ? 0.004 : targets.max_clip, hiT = targets.hi == null ? 0.96 : targets.hi, hl0 = r.tone.highlights, floorHl = hl0 - (an.raw ? 70 : 45);
   for (let i = 0; i < 8; i++) {
     if (st.clip <= maxClip && st.p995 <= hiT + 0.02) break;
     if (r.tone.highlights > floorHl) r.tone.highlights -= 12;
-    else if (r.exposure.ev > base - 0.6) r.exposure.ev -= 0.12; else break;
+    else if (r.exposure.ev > base - (an.raw ? 1.0 : 0.6)) r.exposure.ev -= 0.12; else break;
     st = tonalStats(proxy, r);
   }
   if (r.tone.highlights !== hl0) notes.push(`Highlights ${Math.round(r.tone.highlights)} to protect bright areas`);
-  const loT = targets.black == null ? 0.06 : targets.black, sh0 = r.tone.shadows, cap = sh0 + 35;
+  const loT = targets.black == null ? 0.06 : targets.black, sh0 = r.tone.shadows, cap = sh0 + (an.raw ? 60 : 35);
   if (targets.lift_shadows !== false) {
     for (let i = 0; i < 6; i++) { if (st.p10 >= loT * 2.2 || r.tone.shadows >= cap) break; r.tone.shadows += 12; st = tonalStats(proxy, r); }
     if (r.tone.shadows !== sh0) notes.push(`Shadows ${Math.round(r.tone.shadows)} to open up detail`);
@@ -954,8 +968,7 @@ function solveTone(proxy, r, targets, an) {
 }
 function planRecipe(an, style, proxy) {
   const r = clone(style.recipe), ad = style.adapt || {}, notes = [];
-  r.presence.dehaze *= 0.6; r.tone.shadows *= 0.6; r.presence.clarity *= 0.85;      // 8-bit source: gentler
-  r.detail.sharpen *= 0.5;
+  if (!an.raw) { r.presence.dehaze *= 0.6; r.tone.shadows *= 0.6; r.presence.clarity *= 0.85; r.detail.sharpen *= 0.5; }   // 8-bit source: gentler
   if (an.mono && r.color.bw.amount <= 0) { r.color.vibrance = 0; r.color.saturation = 0; }
   if (r.wb.auto > 0 && an.cast > 0.15) {
     const k = r.wb.auto * an.cast;
@@ -1108,6 +1121,7 @@ function tasteRank(vec) {
 }
 function describeFindings(p) {
   const an = p.an, ml = p.ml, lines = [];
+  if (p.rawMeta) lines.push(["File", `${p.rawMeta.kind}, ${p.rawMeta.source[0]}×${p.rawMeta.source[1]}${p.rawMeta.compressed ? ", lossless-compressed" : ""}; RAW detail is kept for highlights and shadows`]);
   if (ml) lines.push(["Subject (neural network)", ml.top.slice(0, 3).map(t => `${t.label} ${Math.round(t.p * 100)}%`).join(", ")]);
   else lines.push(["Subject", "network unavailable, using measurements only"]);
   const kindWhy = { portrait: an.faces && an.faces.length ? `${an.faces.length} face${an.faces.length > 1 ? "s" : ""} found` : "people recognised", landscape: "natural scenery recognised", architecture: "building recognised", interior: "indoor scene recognised", food: "food recognised", animal: "animal recognised", night: "very low light measured", street: "street or general scene" };
@@ -1123,7 +1137,50 @@ function describeFindings(p) {
 /* ============================================================ app state & image plumbing */
 const DATA = window.__DATA__; DATA.byId = Object.fromEntries(DATA.styles.map(s => [s.id, s]));
 const state = { photos: [], cur: -1, chosen: null, token: 0, autoFrame: true };
-const MAX_EXPORT = 2600, PREVIEW = 1300, THUMB = 420;
+const MAX_EXPORT = 2600, PREVIEW = 1300, THUMB = 420, RAW_MASTER = 2800;
+
+
+/* ============================================================ RAW (DNG) input: iPhone ProRAW and Bayer RAW */
+function dngDecode(buffer, maxSide) {
+  return new Promise((ok, no) => {
+    const src = document.getElementById("dngSrc").textContent;
+    try {
+      const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+      w.onmessage = e => { if (e.data.type === "progress") { status(`Reading RAW file… ${Math.round(e.data.f * 100)}%`); return; } w.terminate(); e.data.type === "done" ? ok(e.data) : no(new Error(e.data.message)); };
+      w.onerror = () => { w.terminate(); no(new Error("RAW decoder failed to start")); };
+      w.postMessage({ buffer, maxSide, id: 1 }, [buffer]);
+    } catch (e) {
+      try { const r = new Function(src + ";return DNG;")().decode(buffer, maxSide); ok({ w: r.w, h: r.h, rgb: r.rgb, meta: r.meta }); } catch (e2) { no(e2); }
+    }
+  });
+}
+/** Area-average a linear float image down to at most maxSide. */
+function shrinkLin(m, maxSide) {
+  const sc = Math.max(1, Math.max(m.w, m.h) / maxSide); if (sc <= 1.0001) return m;
+  const nw = Math.max(1, Math.floor(m.w / sc)), nh = Math.max(1, Math.floor(m.h / sc)), sum = new Float32Array(nw * nh * 3), cnt = new Float32Array(nw * nh);
+  for (let y = 0; y < m.h; y++) { const oy = Math.min(nh - 1, Math.floor(y / sc)); for (let x = 0; x < m.w; x++) { const o = oy * nw + Math.min(nw - 1, Math.floor(x / sc)), i = (y * m.w + x) * 3; sum[o * 3] += m.rgb[i]; sum[o * 3 + 1] += m.rgb[i + 1]; sum[o * 3 + 2] += m.rgb[i + 2]; cnt[o]++; } }
+  for (let o = 0; o < nw * nh; o++) { const c = cnt[o] || 1; sum[o * 3] /= c; sum[o * 3 + 1] /= c; sum[o * 3 + 2] /= c; }
+  return { w: nw, h: nh, rgb: sum };
+}
+/** A linear-float size of the RAW plus an 8-bit preview canvas (neutral baseline, used for display and recognition). */
+function rawTo(master, maxSide, wantCanvas) {
+  const m = shrinkLin(master, maxSide), id = { width: m.w, height: m.h, lin: m.rgb, isRaw: true };
+  if (!wantCanvas) return { canvas: null, id };
+  const c = document.createElement("canvas"); c.width = m.w; c.height = m.h; const x = c.getContext("2d"), out = x.createImageData(m.w, m.h), n = m.w * m.h;
+  for (let i = 0, j = 0; i < n; i++, j += 4) { out.data[j] = enc(m.rgb[i * 3]) * 255; out.data[j + 1] = enc(m.rgb[i * 3 + 1]) * 255; out.data[j + 2] = enc(m.rgb[i * 3 + 2]) * 255; out.data[j + 3] = 255; }
+  x.putImageData(out, 0, 0);
+  return { canvas: c, id };
+}
+/** Scale the RAW so a normal scene sits around middle grey (RAW files are recorded dark); highlights above 1.0 are kept. */
+function rawSource(name, dec) {
+  const n = dec.w * dec.h, step = Math.max(1, Math.floor(n / 20000)), ys = [];
+  for (let i = 0; i < n; i += step) ys.push(0.2126 * dec.rgb[i * 3] + 0.7152 * dec.rgb[i * 3 + 1] + 0.0722 * dec.rgb[i * 3 + 2]);
+  ys.sort((a, b) => a - b);
+  const gain = clamp(0.14 / Math.max(ys[ys.length >> 1], 1e-4), 0.5, 64);
+  for (let i = 0; i < dec.rgb.length; i++) dec.rgb[i] *= gain;
+  return { name, raw: { w: dec.w, h: dec.h, rgb: dec.rgb }, meta: dec.meta, gain, w: dec.w, h: dec.h };
+}
+function status(msg) { let t = $("#statusToast"); if (!msg) { if (t) t.remove(); return; } if (!t) { t = document.createElement("div"); t.id = "statusToast"; t.className = "toast"; document.body.appendChild(t); } t.textContent = msg; }
 
 function sizeTo(bmp, maxSide) {
   const s = Math.min(1, maxSide / Math.max(bmp.width, bmp.height)), w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
@@ -1132,6 +1189,11 @@ function sizeTo(bmp, maxSide) {
   return { canvas: c, id: x.getImageData(0, 0, w, h) };
 }
 async function loadFile(file) {
+  if (/\.dng$/i.test(file.name || "") || /dng/i.test(file.type || "")) {
+    status("Reading RAW file…");
+    try { const dec = await dngDecode(await file.arrayBuffer(), RAW_MASTER); return rawSource((file.name || "raw").replace(/\.[^.]+$/, ""), dec); }
+    finally { status(""); }
+  }
   let bmp;
   try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
   catch { const url = URL.createObjectURL(file); bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
@@ -1139,18 +1201,18 @@ async function loadFile(file) {
   return { name: (file.name || "photo").replace(/\.[^.]+$/, ""), bmp, w, h };
 }
 async function addPhotos(files) {
-  const list = [...files].filter(f => f.type.startsWith("image/") || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+  const list = [...files].filter(f => f.type.startsWith("image/") || /\.(heic|heif|jpe?g|png|webp|dng)$/i.test(f.name));
   if (!list.length) return toast("Pick photos (JPEG, HEIC or PNG).");
   for (const f of list) {
     try {
       const src = await loadFile(f);
       await addPhotoFrom(src);
-    } catch (e) { toast(`Could not open ${f.name || "that file"}.`); }
+    } catch (e) { toast(`Could not open ${f.name || "that file"}: ${e.message || "unsupported"}`); }
   }
 }
 async function addPhotoFrom(src) {
-  const prev = sizeTo(src.bmp, PREVIEW), thumb = sizeTo(src.bmp, THUMB);
-  const p = { name: src.name, bmp: src.bmp, prev, thumb, an: null, rec: null, tiles: new Map(), chosen: null, cache: new Map(), plans: new Map() };
+  const prev = src.raw ? rawTo(src.raw, PREVIEW, true) : sizeTo(src.bmp, PREVIEW), thumb = src.raw ? rawTo(src.raw, THUMB, true) : sizeTo(src.bmp, THUMB);
+  const p = { name: src.name, bmp: src.bmp, rawMaster: src.raw, rawMeta: src.meta, prev, thumb, an: null, rec: null, tiles: new Map(), chosen: null, cache: new Map(), plans: new Map() };
   state.photos.push(p);
   showApp();
   selectPhoto(state.photos.length - 1);
@@ -1289,10 +1351,10 @@ async function exportCurrent(kind) {
   busy(true, png ? "Saving lossless PNG…" : "Saving full size…"); await tick(); await tick();
   try {
     const plan = p.plans.get(id); let blob = null, c = null;
-    for (const side of [3200, 2600, 2000, 1500]) {          // largest the device can handle
+    for (const side of (p.rawMaster ? [2800, 2200, 1600] : [3200, 2600, 2000, 1500])) {          // largest the device can handle
       try {
-        const full = sizeTo(p.bmp, side); c = document.createElement("canvas");
-        renderToCanvas(c, develop(full.id, plan.r, p.an, full.canvas.width), true);
+        const full = p.rawMaster ? rawTo(p.rawMaster, side, false) : sizeTo(p.bmp, side); c = document.createElement("canvas");
+        renderToCanvas(c, develop(full.id, plan.r, p.an, full.id.width), true);
         blob = await new Promise(res => c.toBlob(res, png ? "image/png" : "image/jpeg", 0.98));
         if (blob) break;
       } catch (e) { blob = null; }
@@ -1326,7 +1388,7 @@ function sampleScene() {
   const id = x.getImageData(0, 0, w, h); for (let i = 0; i < id.data.length; i += 4) { const n = (rnd() - 0.5) * 7; id.data[i] += n; id.data[i + 1] += n; id.data[i + 2] += n; } x.putImageData(id, 0, 0);
   return createImageBitmap(c).then(bmp => ({ name: "sample-scene", bmp, w, h }));
 }
-$("#pick").addEventListener("change", e => { addPhotos(e.target.files); e.target.value = ""; });
+for (const sel of ["#pick", "#pickRaw"]) $(sel).addEventListener("change", e => { addPhotos(e.target.files); e.target.value = ""; });
 $("#sample").onclick = async () => addPhotoFrom(await sampleScene());
 $("#save").onclick = () => exportCurrent("jpg");
 $("#savePng").onclick = () => exportCurrent("png");
