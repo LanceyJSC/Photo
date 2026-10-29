@@ -86,11 +86,33 @@ def cmd_styles(a):
         print(f"  {s.id:<20} {s.name}\n  {'':<20} {s.description}")
 
 
+def _lan_ip() -> str:
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+            sk.connect(("10.255.255.255", 1))
+            return sk.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
 def cmd_serve(a):
+    import secrets
     import uvicorn
     from .server import create_app
-    print(f"Darkroom running at http://{a.host}:{a.port}  (data in {a.data})")
-    uvicorn.run(create_app(a.data, a.workers), host=a.host, port=a.port, log_level="warning")
+    host = "0.0.0.0" if a.lan else a.host
+    token = a.token or (secrets.token_urlsafe(9) if (a.lan or host not in ("127.0.0.1", "localhost", "::1")) else None)
+    url = f"http://{_lan_ip() if host == '0.0.0.0' else host}:{a.port}/" + (f"?token={token}" if token else "")
+    print(f"Darkroom running (data in {a.data})\n  open: {url}")
+    if a.lan:
+        print("  Phone on the same Wi-Fi? Scan this, then 'Add to Home Screen':\n")
+        try:
+            import segno
+            segno.make(url, error="m").terminal(compact=True)
+        except Exception:  # noqa: BLE001 - QR is a nicety
+            pass
+        print("  (the link contains a private token; anyone with it can use the editor)")
+    uvicorn.run(create_app(a.data, a.workers, token), host=host, port=a.port, log_level="warning")
 
 
 def cmd_watch(a):
@@ -134,6 +156,8 @@ def main(argv=None):
     v.add_argument("--port", type=int, default=8765)
     v.add_argument("--data", default="darkroom_data")
     v.add_argument("--workers", type=int, default=1)
+    v.add_argument("--lan", action="store_true", help="listen on the local network (for your phone) behind a private link/QR code")
+    v.add_argument("--token", help="require this access token (auto-generated with --lan)")
     v.set_defaults(fn=cmd_serve)
 
     w = sub.add_parser("watch", help="edit everything dropped into a folder")

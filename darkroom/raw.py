@@ -19,7 +19,13 @@ RAW_EXTS = {
     ".orf", ".rw2", ".rwl", ".pef", ".ptx", ".raw", ".3fr", ".fff", ".iiq", ".erf",
     ".mrw", ".kdc", ".dcr", ".srw", ".x3f", ".mef", ".mos", ".cap",
 }
-BITMAP_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
+BITMAP_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".heic", ".heif"}
+
+try:  # iPhone / Android HEIC photos
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except Exception:  # noqa: BLE001 - optional
+    BITMAP_EXTS -= {".heic", ".heif"}
 SUPPORTED_EXTS = RAW_EXTS | BITMAP_EXTS
 
 

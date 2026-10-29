@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -42,11 +43,30 @@ def job_json(j) -> dict:
     return d
 
 
-def create_app(data_dir: str | Path | None = None, workers: int = 1) -> FastAPI:
+PUBLIC_PATHS = {"/manifest.webmanifest", "/sw.js"}
+
+
+def create_app(data_dir: str | Path | None = None, workers: int = 1, token: str | None = None) -> FastAPI:
+    """``token``: when set (e.g. when serving on the LAN for a phone) every request must carry it,
+    either as ``?token=`` (which sets a cookie and redirects) or via that cookie."""
     data_dir = Path(data_dir or os.environ.get("DARKROOM_DATA", "darkroom_data"))
     mgr = JobManager(data_dir, workers=workers)
     app = FastAPI(title="Darkroom")
     app.state.jobs = mgr
+
+    if token:
+        @app.middleware("http")
+        async def auth(request: Request, call_next):
+            path = request.url.path
+            if path in PUBLIC_PATHS or path.startswith("/static/icon") or path.startswith("/static/apple"):
+                return await call_next(request)
+            if secrets.compare_digest(request.cookies.get("dr_token", ""), token):
+                return await call_next(request)
+            if secrets.compare_digest(request.query_params.get("token", ""), token):
+                resp = RedirectResponse(str(request.url.remove_query_params("token")), status_code=303)
+                resp.set_cookie("dr_token", token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 90)
+                return resp
+            return PlainTextResponse("Locked. Open the link (or scan the QR code) printed by `darkroom serve --lan`.", status_code=401)
 
     @app.get("/api/styles")
     def api_styles():
@@ -73,6 +93,18 @@ def create_app(data_dir: str | Path | None = None, workers: int = 1) -> FastAPI:
             except ValueError as e:
                 errors.append({"name": f.filename, "error": str(e)})
         return {"jobs": out, "errors": errors}
+
+    @app.post("/share")
+    async def share_target(files: list[UploadFile] = File(default=[])):
+        """PWA share target: 'Share → Darkroom' from the phone's photo library."""
+        for f in files:
+            data = await f.read()
+            if data and len(data) <= MAX_UPLOAD:
+                try:
+                    mgr.add(f.filename or "photo.jpg", content=data)
+                except ValueError:
+                    pass
+        return RedirectResponse("/", status_code=303)
 
     @app.get("/api/jobs")
     def api_jobs():
@@ -123,6 +155,14 @@ def create_app(data_dir: str | Path | None = None, workers: int = 1) -> FastAPI:
         return FileResponse(path, filename=Path(path).name)
 
     app.mount("/static", StaticFiles(directory=WEB), name="static")
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json")
+
+    @app.get("/sw.js")
+    def sw():
+        return FileResponse(WEB / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
     @app.get("/")
     def index():

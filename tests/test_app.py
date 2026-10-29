@@ -65,3 +65,40 @@ def test_watch_folder_edits_new_files(dng, tmp_path):
     assert not list(outbox.glob("*.jpg"))
     w.scan()          # stable: processed
     assert list(outbox.glob("a_natural.jpg"))
+
+
+def test_lan_token_protects_everything(tmp_path):
+    client = TestClient(create_app(tmp_path / "data", token="s3cret"), follow_redirects=False)
+    assert client.get("/api/jobs").status_code == 401
+    assert client.get("/").status_code == 401
+    assert client.post("/api/upload", files=[("files", ("a.jpg", b"x"))]).status_code == 401
+    assert client.get("/?token=wrong").status_code == 401
+    r = client.get("/?token=s3cret")
+    assert r.status_code == 303 and "token" not in r.headers["location"]
+    assert "dr_token" in r.headers["set-cookie"]
+    client.cookies.set("dr_token", "s3cret")
+    assert client.get("/api/jobs").status_code == 200
+    assert client.get("/").status_code == 200
+    # the installable-app files must stay reachable without credentials
+    anon = TestClient(create_app(tmp_path / "d2", token="s3cret"))
+    assert anon.get("/manifest.webmanifest").status_code == 200
+    assert anon.get("/sw.js").status_code == 200
+
+
+def test_heic_from_iphone_is_accepted(tmp_path):
+    import numpy as np
+    from PIL import Image
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    p = tmp_path / "IMG_0001.HEIC"
+    Image.fromarray((np.random.default_rng(0).random((200, 300, 3)) * 255).astype("uint8")).save(p)
+    from darkroom import edit
+    res = edit.process(p, tmp_path / "o", style="natural")
+    assert res.size[0] > 100
+
+
+def test_share_target_adds_job(tmp_path, dng):
+    client = TestClient(create_app(tmp_path / "data"), follow_redirects=False)
+    r = client.post("/share", files=[("files", ("scene.dng", dng.read_bytes()))])
+    assert r.status_code == 303
+    assert len(client.get("/api/jobs").json()) == 1

@@ -11,18 +11,35 @@ async function api(path, opts) {
 }
 
 // ---------------------------------------------------------------- upload
+function xhrUpload(files) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    const x = new XMLHttpRequest();
+    x.open("POST", "/api/upload");
+    const bar = $("#uploadBar");
+    const total = [...files].reduce((n, f) => n + f.size, 0);
+    bar.hidden = false;
+    x.upload.onprogress = e => {
+      const f = e.lengthComputable ? e.loaded / e.total : 0;
+      $("#uploadFill").style.width = Math.round(f * 100) + "%";
+      $("#uploadText").textContent = `Uploading ${files.length} photo${files.length > 1 ? "s" : ""} · ${Math.round(f * 100)}% of ${(total / 1048576).toFixed(1)} MB`;
+    };
+    x.onload = () => { bar.hidden = true; x.status < 300 ? resolve(JSON.parse(x.responseText)) : reject(new Error(x.statusText || "upload failed")); };
+    x.onerror = () => { bar.hidden = true; reject(new Error("network error")); };
+    x.send(fd);
+  });
+}
 async function upload(files) {
   if (!files.length) return;
-  const fd = new FormData();
-  for (const f of files) fd.append("files", f);
   try {
-    const res = await api("/api/upload", { method: "POST", body: fd });
+    const res = await xhrUpload(files);
     if (res.errors.length) alert(res.errors.map(e => `${e.name}: ${e.error}`).join("\n"));
     await refresh();
     if (res.jobs.length) select(res.jobs[0].id);
   } catch (e) { alert("Upload failed: " + e.message); }
 }
-$("#file").addEventListener("change", e => { upload([...e.target.files]); e.target.value = ""; });
+for (const id of ["#file", "#cam"]) $(id).addEventListener("change", e => { upload([...e.target.files]); e.target.value = ""; });
 ["dragenter", "dragover"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); document.body.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); document.body.classList.remove("over"); }));
 document.addEventListener("drop", e => upload([...e.dataTransfer.files]));
@@ -54,6 +71,7 @@ const cur = () => state.jobs.find(j => j.id === state.sel);
 // ---------------------------------------------------------------- viewer
 function renderViewer() {
   const j = cur();
+  document.body.classList.toggle("has-job", !!j);
   $("#dropzone").hidden = !!j;
   $("#viewer").hidden = !j;
   $("#panel").hidden = !j;
@@ -82,6 +100,19 @@ function renderViewer() {
     el.href = url; el.textContent = "Download " + ({ jpg: "JPEG", tif: "TIFF", png: "PNG" }[k] || k);
     $("#downloads").appendChild(el);
   }
+  if (j.downloads && j.downloads.jpg && navigator.canShare) {       // phones: straight to Photos / share sheet
+    const b = document.createElement("button");
+    b.textContent = "Save / Share";
+    b.onclick = async () => {
+      try {
+        const blob = await (await fetch(j.downloads.jpg)).blob();
+        const file = new File([blob], j.name.replace(/\.[^.]+$/, "") + "_edit.jpg", { type: "image/jpeg" });
+        if (navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
+        else location.href = j.downloads.jpg;
+      } catch (e) { if (e.name !== "AbortError") location.href = j.downloads.jpg; }
+    };
+    $("#downloads").prepend(b);
+  }
 }
 (function () {
   const c = $("#compare");
@@ -94,7 +125,7 @@ function renderViewer() {
   };
   c.addEventListener("pointerdown", e => { if (e.target.closest(".busy")) return; drag = true; move(e); });
   window.addEventListener("pointermove", e => drag && move(e));
-  window.addEventListener("pointerup", () => (drag = false));
+  ["pointerup", "pointercancel"].forEach(t => window.addEventListener(t, () => (drag = false)));
 })();
 
 // ---------------------------------------------------------------- panel
@@ -192,3 +223,5 @@ async function refresh() {
   await refresh();
   setInterval(refresh, 1200);
 })();
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

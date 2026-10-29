@@ -37,6 +37,8 @@ class Style:
     targets: dict = field(default_factory=dict)
     adapt: dict = field(default_factory=dict)
     notes: str = ""
+    photographer: str = ""
+    refs: list = field(default_factory=list)     # sources consulted for the look
 
     @property
     def is_bw(self) -> bool:
@@ -108,7 +110,7 @@ add("street_bw_trix", "Street – Black & White (Tri-X)", "Street",
 
 add("street_bw_extreme", "Street – Ultra-Grain Black & White", "Street",
     "Provoke-era 'are-bure-boke': extreme contrast, blown highlights, huge grain, raw and emotional.",
-    ["moriyama", "provoke", "are bure boke", "extreme", "ultra grain", "grainy black and white", "very grainy", "raw bw",
+    ["extreme", "ultra grain", "grainy black and white", "very grainy", "raw bw",
      "high contrast black and white", "daido"],
     {"tone": {"contrast": 1.65, "highlights": 10, "whites": 25, "blacks": -30, "toe": 0.1, "shoulder": 0.9},
      "presence": {"clarity": 45, "texture": 30},
@@ -506,6 +508,330 @@ add("night_city", "Night – Clean Cityscape", "Night",
      "effects": {"halation": {"amount": 0.2, "threshold": 0.85}, "vignette": {"amount": 0.15}}},
     T(0.36, 0.01, 0.95, preserve_key=0.7, lift_shadows=False), {"nr": 1.4},
     "Night images keep their darkness; the work is noise control and light-source management.")
+
+# ======================================================================= IN THE MANNER OF
+# Looks distilled from the working methods of well-known photographers.  Each entry's `notes`
+# separates what is documented from what is interpretation; `refs` lists sources consulted.
+_PH = "Photographers"
+R_ADAMS = ["https://en.wikipedia.org/wiki/Dodging_and_burning", "https://photo-facts.com/zone-system"]
+R_MORIYAMA = ["https://thephotographersgallery.org.uk/node/2317",
+              "https://digitalcameraworld.com/cameras/compact-cameras/did-you-know-the-ricoh-gr-iii-has-a-daido-moriyama-mode"]
+R_SALGADO = ["https://luminous-landscape.com/sebastiao-salgado-master-of-light-shadow-and-human-dignity",
+             "https://www.photrio.com/forum/threads/sebasti%C3%A3o-salgados-genesis-how-did-he-do-it.104571/"]
+R_KOUDELKA = ["https://www.photrio.com/forum/threads/how-josef-koudelka-achieved-this-style.184548/?amp=1"]
+R_FANHO = ["https://www.mplus.org.hk/en/magazine/ho-fan-on-the-decisive-moment/"]
+R_HCB = ["https://www.photrio.com/forum/threads/hcb-appreciation.138841/page-5?amp=1"]
+R_COLOR = ["https://www.internazionale.it/foto/2017/05/30/colori-vancouver-fred-herzog",
+           "https://kirkville.com/photo-book-review-modern-color-by-fred-herzog/"]
+R_WEBB = ["https://www.shutterbug.com/node/371923", "https://theclick.us/2024/07/25/alex-webb-on-how-color-photography-changes-his-way-of-seeing"]
+R_MCCURRY = ["https://petapixel.com/2018/05/12/how-to-edit-photos-like-steve-mccurry-the-art-of-removing-distractions"]
+R_ARCH = ["https://illustrarch.com/architectural-photography/65449-famous-architectural-photographers.html"]
+R_SUGIMOTO = ["https://wizardgallery.com/blog/49-hiroshi-sugimoto-master-of-minimalist-photography",
+              "https://www.whitecube.com/gallery-exhibitions/seascapes-theatres-dioramas-and-drive-ins"]
+
+add("ph_adams", "Ansel Adams – Zone System Print", _PH,
+    "Full tonal scale from true black to paper white, dark red-filtered skies, glowing clouds, crisp edge-to-edge detail, burned corners and dodged shadows.",
+    ["ansel adams", "adams", "zone system", "yosemite", "half dome", "grand landscape", "fine art landscape black and white", "ansel"],
+    {"geometry": {"auto_horizon": 0.6},
+     "tone": {"contrast": 1.3, "highlights": -32, "shadows": 30, "whites": 12, "blacks": -14, "toe": 0.3, "shoulder": 0.55},
+     "presence": {"clarity": 30, "texture": 18, "dehaze": 14, "micro_contrast": 18},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.55, orange=0.45, yellow=0.25, green=0.0, aqua=-0.3, blue=-0.55, purple=-0.3),
+                      "tone": {"h": 250, "s": 0.05}}},
+     "local": {"sky": {"exposure": -0.45, "blue_lum": -0.2}, "gradient_top": {"exposure": -0.35}},
+     "detail": {"sharpen": 0.85, "defringe": 0.6},
+     "effects": {"vignette": {"amount": 0.2, "midpoint": 0.6}, "grain": {"amount": 0.05, "size": 0.7}}},
+    T(0.46, 0.006, 0.98, preserve_key=0.2, lift_shadows=True), {"sky": True},
+    "Documented: the Zone System (expose for the shadows, develop for the highlights so the scene fits ten zones) and heavy dodging & burning at the print stage. "
+    "Interpretation: red/yellow filtration for dark skies, the steep-but-open curve and the burned-in corners/sky gradient.",
+    "Ansel Adams", R_ADAMS)
+
+add("ph_moriyama", "Daido Moriyama – Are-Bure-Boke", _PH,
+    "Provoke-era Tokyo: pushed-Tri-X contrast, coarse grain, crushed blacks and burnt highlights. Rough, raw and immediate.",
+    ["daido moriyama", "moriyama", "are bure boke", "provoke", "ricoh gr", "high contrast bw", "tokyo street", "shinjuku", "stray dog"],
+    {"tone": {"contrast": 1.7, "highlights": 12, "whites": 28, "blacks": -32, "toe": 0.05, "shoulder": 0.95},
+     "presence": {"clarity": 48, "texture": 32, "micro_contrast": 20},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.3, orange=0.25, yellow=0.15, blue=-0.25)}},
+     "detail": {"sharpen": 0.4},
+     "effects": {"grain": {"amount": 1.0, "size": 2.0, "roughness": 0.8}, "vignette": {"amount": 0.15}}},
+    T(0.5, 0.0, 0.99, preserve_key=0.4, max_clip=0.08, lift_shadows=False), {"nr": 0.0, "keep_texture": True},
+    "Documented: 'are, bure, boke' = grainy, blurry, out-of-focus, with grain treated as an expressive tool; he pushed contrast to extremes in the darkroom; Ricoh's "
+    "'High Contrast B&W' imitates this push-processed film look. Interpretation: exact curve, grain size and the blown-highlight bias.",
+    "Daido Moriyama", R_MORIYAMA)
+
+add("ph_hcb", "Henri Cartier-Bresson – The Decisive Moment", _PH,
+    "Leica-and-Tri-X reportage: rich mid-grey tonality, restrained contrast, gentle lens vignette, warm bromide-paper feel, straight horizon.",
+    ["cartier bresson", "cartier-bresson", "hcb", "decisive moment", "magnum", "leica street", "classic reportage", "humanist", "paris"],
+    {"geometry": {"auto_horizon": 0.8},
+     "tone": {"contrast": 1.16, "highlights": -18, "shadows": 14, "blacks": -6, "toe": 0.5, "shoulder": 0.65, "fade": 0.008},
+     "presence": {"clarity": 10, "texture": 6},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.15, orange=0.12, yellow=0.06, blue=-0.08),
+                      "tone": {"h": 70, "s": 0.07}}},
+     "detail": {"sharpen": 0.55},
+     "effects": {"grain": {"amount": 0.26, "size": 1.0, "roughness": 0.45}, "vignette": {"amount": 0.2, "midpoint": 0.62}}},
+    T(0.5, 0.015, 0.96, preserve_key=0.3, lift_shadows=False), {},
+    "Documented: his prints were made by master printers (e.g. Pierre Gassmann/Picto) on bromide papers prized for their tonality. "
+    "Interpretation: moderate contrast with a long, even grey scale, warm-neutral tone, light vignetting typical of fast Leica lenses.",
+    "Henri Cartier-Bresson", R_HCB)
+
+add("ph_fanho", "Fan Ho – Shadow & Smoke (Hong Kong)", _PH,
+    "Low-sun chiaroscuro: deep shadows cut by shafts of light, hazy glowing highlights, graphic geometry, a small figure in a pool of light.",
+    ["fan ho", "ho fan", "hong kong", "shadows and light", "chiaroscuro street", "light shafts", "approaching shadow", "smoky", "1950s hong kong"],
+    {"tone": {"contrast": 1.4, "highlights": -10, "shadows": -10, "blacks": -22, "toe": 0.15, "shoulder": 0.75},
+     "presence": {"clarity": 22, "texture": 10, "dehaze": -0},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.2, orange=0.2, yellow=0.12, blue=-0.2),
+                      "tone": {"h": 65, "s": 0.05}}},
+     "local": {"subject": {"exposure": 0.25, "radius": 0.3}},
+     "effects": {"glow": {"amount": 0.28, "radius": 0.022}, "vignette": {"amount": 0.38}, "grain": {"amount": 0.3, "size": 1.0}}},
+    T(0.36, 0.0, 0.98, preserve_key=0.5, lift_shadows=False, max_clip=0.03), {},
+    "Documented: style defined by shadow and light, often shot with the sun low; the tonality was shaped in the darkroom, taming wildly varying light. "
+    "Interpretation: low-key target, burnt shadows, atmospheric glow for haze/smoke.",
+    "Fan Ho", R_FANHO)
+
+add("ph_maier", "Vivian Maier – Rolleiflex Street", _PH,
+    "Medium-format street tonality: soft, wide-ranging greys, fine grain, deep but open shadows, quiet and observational.",
+    ["vivian maier", "maier", "rolleiflex", "nanny", "medium format street", "chicago street", "square", "mid century street"],
+    {"tone": {"contrast": 1.12, "highlights": -20, "shadows": 18, "blacks": -4, "toe": 0.55, "shoulder": 0.7, "fade": 0.012},
+     "presence": {"clarity": 10, "texture": 8},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.16, orange=0.14, yellow=0.08, blue=-0.1),
+                      "tone": {"h": 62, "s": 0.04}}},
+     "detail": {"sharpen": 0.6},
+     "effects": {"grain": {"amount": 0.16, "size": 0.85, "roughness": 0.4}, "vignette": {"amount": 0.12}}},
+    T(0.5, 0.02, 0.96, preserve_key=0.3, lift_shadows=False), {},
+    "Documented: she shot Rolleiflex and Leica for decades and printed very little, so her 'look' is mostly the negatives as later printed. "
+    "Interpretation: a gentle, medium-format-like scale with fine grain; for a true square frame, crop 1:1 afterwards.",
+    "Vivian Maier", ["https://www.rousette.org.uk/archives/vivian-maier/", "https://www.artforum.com/columns/vivian-maier-out-of-the-shadows-216711/"])
+
+add("ph_salgado", "Sebastião Salgado – Epic Monochrome", _PH,
+    "Monumental black & white: velvety deep blacks, luminous silver mid-tones, brooding skies and a dramatic glow of light on faces and land.",
+    ["salgado", "sebastiao salgado", "genesis", "workers", "epic black and white", "humanist documentary", "dramatic skies bw"],
+    {"tone": {"contrast": 1.3, "highlights": -28, "shadows": 22, "blacks": -16, "toe": 0.3, "shoulder": 0.6},
+     "presence": {"clarity": 32, "texture": 14, "dehaze": 12},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.4, orange=0.32, yellow=0.16, green=0.02, aqua=-0.2, blue=-0.42),
+                      "tone": {"h": 55, "s": 0.03}}},
+     "local": {"sky": {"exposure": -0.5}, "gradient_top": {"exposure": -0.3}, "subject": {"exposure": 0.18}},
+     "detail": {"sharpen": 0.7},
+     "effects": {"grain": {"amount": 0.3, "size": 1.0}, "vignette": {"amount": 0.3}, "glow": {"amount": 0.06}}},
+    T(0.43, 0.008, 0.97, preserve_key=0.35, lift_shadows=True), {"sky": True},
+    "Documented (secondary sources): Tri-X rated 400–1600, exposure for the shadows with wide tonal range; later work digital but styled to match. "
+    "Interpretation: dark sky burn, subject dodge, rich blacks with retained shadow detail.",
+    "Sebastião Salgado", R_SALGADO)
+
+add("ph_koudelka", "Josef Koudelka – Dark & Heavy", _PH,
+    "Brooding, raw and heavy: thick blacks, gritty grain, harsh contrast, low-key frames that feel like a cold wind.",
+    ["koudelka", "josef koudelka", "gypsies", "exiles", "heavy blacks", "dark gritty bw", "eastern europe", "panoramic exiles"],
+    {"tone": {"contrast": 1.42, "highlights": -14, "shadows": -6, "blacks": -26, "toe": 0.12, "shoulder": 0.8},
+     "presence": {"clarity": 30, "texture": 22, "micro_contrast": 12},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.3, orange=0.25, yellow=0.12, blue=-0.2)}},
+     "detail": {"sharpen": 0.6},
+     "effects": {"grain": {"amount": 0.62, "size": 1.35, "roughness": 0.65}, "vignette": {"amount": 0.42}}},
+    T(0.34, 0.0, 0.96, preserve_key=0.55, lift_shadows=False, max_clip=0.02), {"nr": 0.3, "keep_texture": True},
+    "Documented (forum, anecdotal): high-contrast lighting, raw grain, and a look attributed mainly to heavy darkroom work. "
+    "Interpretation: low key, crushed blacks, coarse grain, strong vignette.",
+    "Josef Koudelka", R_KOUDELKA)
+
+add("ph_frank", "Robert Frank – The Americans", _PH,
+    "Rough, off-hand, grainy: uneven light, smoky greys, deep muddy shadows, a sad, honest roadside America.",
+    ["robert frank", "the americans", "roadside", "beat", "grainy documentary", "americana bw", "jukebox"],
+    {"tone": {"contrast": 1.25, "highlights": -12, "shadows": 4, "blacks": -14, "toe": 0.25, "shoulder": 0.7, "fade": 0.01},
+     "presence": {"clarity": 14, "texture": 12},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.2, orange=0.15, yellow=0.08, blue=-0.15),
+                      "tone": {"h": 60, "s": 0.03}}},
+     "effects": {"grain": {"amount": 0.58, "size": 1.3, "roughness": 0.6}, "vignette": {"amount": 0.3}}},
+    T(0.42, 0.01, 0.95, preserve_key=0.45, lift_shadows=False), {"nr": 0.2, "keep_texture": True},
+    "Interpretation from the look of the published book (35 mm Tri-X, uneven printing): not a documented recipe.",
+    "Robert Frank", [])
+
+add("ph_leiter", "Saul Leiter – Painterly Kodachrome", _PH,
+    "Soft, abstract, painterly colour: glowing reds and ambers against muted surroundings, low contrast, a veil of rain and reflection.",
+    ["saul leiter", "leiter", "painterly", "rainy window", "abstract street color", "new york 1950s", "red umbrella", "color painter"],
+    {"wb": {"mired": 6},
+     "tone": {"contrast": 1.05, "highlights": -25, "shadows": 22, "fade": 0.03, "toe": 0.7, "shoulder": 0.75, "chroma_follow": 0.45},
+     "presence": {"clarity": -14, "texture": -8},
+     "color": {"saturation": -10, "vibrance": 12,
+               "hsl": hsl(red=(0.02, 0.34, 0.02), orange=(0, 0.18, 0.04), yellow=(-0.05, 0.05, 0), green=(-0.1, -0.3, -0.05),
+                          aqua=(0, -0.3, 0), blue=(0, -0.2, -0.05)),
+               "grade": {"highlights": zone(70, 0.18), "shadows": zone(25, 0.1)}},
+     "effects": {"glow": {"amount": 0.3, "radius": 0.025}, "grain": {"amount": 0.2, "size": 1.1}, "vignette": {"amount": 0.1}}},
+    T(0.5, 0.025, 0.95, preserve_key=0.4, auto_black=False), {"nr": 1.0},
+    "Documented: Kodachrome in 1940s–60s New York, rain-streaked glass and reflections breaking the scene into painterly blocks; Kodachrome's rich reds. "
+    "Interpretation: soft veil (negative clarity + glow), red emphasis with the rest muted.",
+    "Saul Leiter", R_COLOR[:1] + ["https://www.equinoxgallery.com/wp-content/uploads/2024/02/When-Master-Photographers-Spin-the-Color-Wheel-The-New-York-Times.pdf"])
+
+add("ph_eggleston", "William Eggleston – Dye-Transfer Colour", _PH,
+    "Saturated, deadpan colour of the everyday: lurid reds, deep cyan-greens, smooth rich surfaces, nothing dramatised.",
+    ["eggleston", "william eggleston", "dye transfer", "new color", "deadpan", "suburban color", "red ceiling", "democratic camera"],
+    {"wb": {"mired": 4},
+     "tone": {"contrast": 1.12, "highlights": -20, "shadows": 12},
+     "presence": {"clarity": 6, "texture": 4},
+     "color": {"saturation": 14, "vibrance": 14,
+               "hsl": hsl(red=(0, 0.3, -0.02), orange=(0, 0.12, 0), yellow=(0, 0.14, 0), green=(-0.08, 0.14, -0.06),
+                          aqua=(0, 0.18, -0.04), blue=(0, 0.15, -0.08))},
+     "detail": {"sharpen": 0.55},
+     "effects": {"grain": {"amount": 0.05, "size": 0.7}}},
+    T(0.52, 0.015, 0.96, preserve_key=0.3), {},
+    "Documented: ordinary subjects (gas stations, suburban streets, interiors) in vivid colour, the 1976 MoMA show that legitimised colour. "
+    "Interpretation: dye-transfer-like density — strong reds/cyans, smooth, no vignette or grain.",
+    "William Eggleston", R_COLOR)
+
+add("ph_herzog", "Fred Herzog – Kodachrome Vancouver", _PH,
+    "Gritty 1950s–60s city colour: warm Kodachrome density, saturated signage, cool shadow edges, working-class streets.",
+    ["fred herzog", "herzog", "vancouver", "modern color", "kodachrome street", "signage", "1960s city", "neon signs"],
+    {"wb": {"mired": 7},
+     "tone": {"contrast": 1.26, "highlights": -24, "shadows": 10, "blacks": -10, "chroma_follow": 0.45},
+     "presence": {"clarity": 14, "texture": 10},
+     "color": {"saturation": 6, "vibrance": 12,
+               "grade": {"shadows": zone(245, 0.2), "highlights": zone(72, 0.2)},
+               "hsl": hsl(red=(-0.03, 0.22, 0), yellow=(-0.05, 0.16, 0), blue=(-0.05, 0.1, -0.15), green=(-0.2, -0.1, -0.05))},
+     "effects": {"grain": {"amount": 0.28, "size": 1.0}, "vignette": {"amount": 0.2}}},
+    T(0.46, 0.012, 0.95, preserve_key=0.4, lift_shadows=False), {},
+    "Documented: ~50 years almost exclusively on Kodachrome slide film; prints matched the slide's colour and intensity (the 'Kodachrome look'). "
+    "Interpretation: warm density, strong reds/yellows, cooler shadow edges.",
+    "Fred Herzog", R_COLOR)
+
+add("ph_webb", "Alex Webb – Layered Light", _PH,
+    "Hot, layered colour: radiant reds, yellows and deep blues, silhouettes in dense shadow, searing light.",
+    ["alex webb", "webb", "layered", "silhouette color", "haiti", "istanbul", "searing light", "magnum color", "dense shadows"],
+    {"tone": {"contrast": 1.34, "highlights": -30, "shadows": -4, "blacks": -18, "toe": 0.2, "shoulder": 0.7},
+     "presence": {"clarity": 18, "texture": 12},
+     "color": {"saturation": 8, "vibrance": 22,
+               "grade": {"shadows": zone(262, 0.28), "highlights": zone(75, 0.25)},
+               "hsl": hsl(red=(0, 0.24, -0.02), yellow=(-0.04, 0.2, 0.02), blue=(0, 0.2, -0.14), orange=(0, 0.1, 0), magenta=(0, 0.1, 0))},
+     "effects": {"grain": {"amount": 0.2, "size": 0.9}, "vignette": {"amount": 0.12}}},
+    T(0.42, 0.006, 0.95, preserve_key=0.5, lift_shadows=False), {},
+    "Documented: layered compositions of gesture, light and colour; vivid reds, deep blues and radiant yellows; light that shaped his move to colour. "
+    "Interpretation: dense shadows with saturated primaries.",
+    "Alex Webb", R_WEBB)
+
+add("ph_mccurry", "Steve McCurry – Saturated Portraiture", _PH,
+    "Rich, saturated travel portraiture: glowing reds, oranges and deep blues, luminous eyes and skin, warm Kodachrome heritage.",
+    ["mccurry", "steve mccurry", "afghan girl", "national geographic portrait", "saturated portrait", "travel portrait", "india color", "kodachrome portrait"],
+    {"wb": {"mired": 5},
+     "tone": {"contrast": 1.2, "highlights": -26, "shadows": 18, "blacks": -6},
+     "presence": {"clarity": 14, "texture": 4, "micro_contrast": 8},
+     "color": {"saturation": 14, "vibrance": 26, "skin_protect": 0.9,
+               "hsl": hsl(red=(0, 0.2, 0), orange=(0, 0.08, 0.04), yellow=(0, 0.12, 0), blue=(0, 0.18, -0.12), aqua=(0, 0.1, 0))},
+     "local": {"subject": {"exposure": 0.22}},
+     "detail": {"sharpen": 0.7},
+     "effects": {"vignette": {"amount": 0.16}, "grain": {"amount": 0.1}}},
+    T(0.5, 0.012, 0.96, preserve_key=0.3), {"faces": True},
+    "Documented: heavily saturated colour is central to his work (and a PetaPixel tutorial describes his muted film tone plus added saturation). "
+    "Interpretation: vibrance-led push, eyes/face dodge, blues deepened.",
+    "Steve McCurry", R_MCCURRY)
+
+add("ph_leibovitz", "Annie Leibovitz – Editorial Drama", _PH,
+    "Staged and painterly: rich colour, deliberate dramatic light, dense shadows and glowing skin, a confident, cinematic presence.",
+    ["leibovitz", "annie leibovitz", "vanity fair", "editorial", "rolling stone", "staged", "celebrity portrait", "dramatic portrait color"],
+    {"tone": {"contrast": 1.26, "highlights": -22, "shadows": 6, "blacks": -12, "toe": 0.3},
+     "presence": {"clarity": 10, "texture": -2},
+     "color": {"saturation": 6, "vibrance": 18, "skin_protect": 1.0,
+               "grade": {"shadows": zone(215, 0.18), "highlights": zone(62, 0.24)},
+               "hsl": hsl(orange=(0, 0.02, 0.05), red=(0, 0.1, 0), blue=(0, 0.1, -0.1), green=(-0.1, -0.2, -0.05))},
+     "local": {"subject": {"exposure": 0.25}, "skin_smooth": 0.15},
+     "effects": {"vignette": {"amount": 0.3}, "grain": {"amount": 0.1}}},
+    T(0.44, 0.01, 0.95, preserve_key=0.45, lift_shadows=False), {"faces": True},
+    "Described in sources as dramatic lighting, rich colour, careful staging and strong sense of character. Interpretation: darker key, saturated but skin-safe grade.",
+    "Annie Leibovitz", ["https://retouchinglabs.com/famous-portrait-photographers-of-the-21st-century/"])
+
+add("ph_lindbergh", "Peter Lindbergh – Raw Cinematic B&W", _PH,
+    "Natural, barely retouched black & white: honest skin texture, silvery cinematic tones, soft light and a hint of grain.",
+    ["lindbergh", "peter lindbergh", "supermodels", "natural black and white portrait", "unretouched", "cinematic bw portrait", "fashion bw"],
+    {"tone": {"contrast": 1.14, "highlights": -20, "shadows": 18, "blacks": -4, "toe": 0.55, "shoulder": 0.7, "fade": 0.012},
+     "presence": {"clarity": 6, "texture": 6},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.22, orange=0.2, yellow=0.1, blue=-0.12),
+                      "tone": {"h": 235, "s": 0.04}}},
+     "local": {"subject": {"exposure": 0.12}},
+     "effects": {"grain": {"amount": 0.24, "size": 1.0}, "vignette": {"amount": 0.16}, "glow": {"amount": 0.05}}},
+    T(0.52, 0.02, 0.97, preserve_key=0.25, lift_shadows=False), {"faces": True, "keep_texture": True},
+    "Documented: believed retouching should be minimal, often black & white for drama. Interpretation: silvery neutral-cool grade, skin texture deliberately preserved (no smoothing).",
+    "Peter Lindbergh", ["https://retouchinglabs.com/famous-portrait-photographers-of-the-21st-century/"])
+
+add("ph_hido", "Todd Hido – Suburban Night", _PH,
+    "Moody twilight suburbia: fluorescent teal-green shadows, amber windows, long-exposure softness and film grain.",
+    ["todd hido", "hido", "suburban night", "house hunting", "twilight windows", "lonely house", "fluorescent green", "moody suburbia"],
+    {"tone": {"contrast": 1.14, "highlights": -30, "shadows": 18, "fade": 0.02, "toe": 0.55},
+     "presence": {"clarity": 6, "dehaze": 4},
+     "color": {"saturation": 6, "vibrance": 14,
+               "grade": {"shadows": zone(170, 0.42), "mids": zone(150, 0.08), "highlights": zone(60, 0.34), "blend": 0.6},
+               "hsl": hsl(green=(-0.12, 0.1, -0.05), aqua=(0, 0.15, 0), yellow=(-0.05, 0.1, 0), orange=(0, 0.12, 0.03))},
+     "effects": {"halation": {"amount": 0.22, "radius": 0.012, "threshold": 0.8, "hue": 40}, "grain": {"amount": 0.34, "size": 1.2},
+                 "vignette": {"amount": 0.28}}},
+    T(0.34, 0.02, 0.95, preserve_key=0.65, lift_shadows=False, auto_black=False), {"nr": 1.1},
+    "Documented only that he has a signature palette conveying unease beneath suburban uniformity. Interpretation: green-teal shadows vs warm window light, as a mood study.",
+    "Todd Hido", ["https://juxtapoz.com/news/photography/todd-hido-makes-a-series-of-small-decisions-at-leica-gallery/"])
+
+add("ph_stoller", "Ezra Stoller – Modernist Clarity", _PH,
+    "Rational, precise architectural monochrome: plumb verticals, hard geometry, crisp tonal separation, light studied until shadows describe the form.",
+    ["ezra stoller", "stoller", "modernist architecture", "mid century architecture bw", "rational", "geometry bw", "guggenheim", "seagram"],
+    {"geometry": {"auto_upright": 1.0},
+     "tone": {"contrast": 1.3, "highlights": -30, "shadows": 20, "blacks": -10, "toe": 0.3},
+     "presence": {"clarity": 26, "texture": 14, "micro_contrast": 26, "dehaze": 10},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.42, orange=0.32, yellow=0.16, aqua=-0.22, blue=-0.45)}},
+     "local": {"sky": {"exposure": -0.35}},
+     "detail": {"sharpen": 0.85, "defringe": 0.7},
+     "effects": {"grain": {"amount": 0.08, "size": 0.7}, "vignette": {"amount": 0.1}}},
+    T(0.46, 0.008, 0.97, preserve_key=0.2), {"sky": True},
+    "Documented: mostly black & white, clean geometric precision, hours spent tracking sun until shadows described the form. Interpretation: red-filter skies, steep clean curve, perfect verticals.",
+    "Ezra Stoller", R_ARCH)
+
+add("ph_shulman", "Julius Shulman – Case Study Glow", _PH,
+    "Mid-century modern glamour: luminous interior against a deep dusk or sky, controlled reflections, warm lamps balanced with daylight.",
+    ["shulman", "julius shulman", "case study house", "mid century modern", "california modernism", "stahl house", "dusk interior", "glamour architecture"],
+    {"geometry": {"auto_upright": 1.0},
+     "wb": {"auto": 0.4},
+     "tone": {"contrast": 1.22, "highlights": -34, "shadows": 30, "blacks": -10},
+     "presence": {"clarity": 16, "micro_contrast": 18, "dehaze": 8},
+     "color": {"vibrance": 14, "saturation": 2,
+               "grade": {"shadows": zone(250, 0.22), "highlights": zone(65, 0.26)},
+               "hsl": hsl(orange=(0, 0.1, 0.05), yellow=(0, 0.05, 0.03), blue=(0, 0.14, -0.18))},
+     "local": {"sky": {"exposure": -0.5, "saturation": 0.1, "blue_lum": -0.3}},
+     "detail": {"sharpen": 0.8, "defringe": 0.6},
+     "effects": {"vignette": {"amount": 0.16}, "glow": {"amount": 0.08}}},
+    T(0.46, 0.012, 0.96, preserve_key=0.4), {"sky": True},
+    "Documented: staged interiors, controlled reflections in glass, and balancing daylight against interior lamps. Interpretation: dusk-sky darkening with warm interior glow.",
+    "Julius Shulman", R_ARCH)
+
+add("ph_baan", "Iwan Baan – Lived-In Architecture", _PH,
+    "Documentary architecture: natural, honest colour, soft ambient light, buildings in context with weather and life.",
+    ["iwan baan", "baan", "lived in architecture", "documentary architecture", "context", "people in architecture", "urban life architecture"],
+    {"geometry": {"auto_upright": 0.7},
+     "wb": {"auto": 0.4},
+     "tone": {"contrast": 1.08, "highlights": -26, "shadows": 24, "whites": 4},
+     "presence": {"clarity": 10, "texture": 8, "dehaze": 6},
+     "color": {"vibrance": 12, "saturation": 0, "hsl": hsl(blue=(0, 0.05, -0.08))},
+     "local": {"sky": {"exposure": -0.2}},
+     "detail": {"sharpen": 0.65, "defringe": 0.5}},
+    T(0.52, 0.015, 0.96, preserve_key=0.35), {"sky": True},
+    "Documented: documentary approach including people, weather and the 'messiness of actual inhabitation'. Interpretation: light-touch, natural grade with mild correction.",
+    "Iwan Baan", R_ARCH)
+
+add("ph_binet", "Hélène Binet – Light on Form", _PH,
+    "Analogue-feeling architectural abstraction: raking light, deep tones, textured surfaces, quiet graphic composition.",
+    ["helene binet", "binet", "raking light", "texture architecture", "abstract architecture", "analogue architecture", "master of light"],
+    {"geometry": {"auto_upright": 0.7},
+     "tone": {"contrast": 1.34, "highlights": -24, "shadows": 10, "blacks": -18, "toe": 0.25},
+     "presence": {"clarity": 24, "texture": 24, "micro_contrast": 22},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.25, orange=0.2, yellow=0.1, blue=-0.2),
+                      "tone": {"h": 60, "s": 0.03}}},
+     "detail": {"sharpen": 0.7},
+     "effects": {"grain": {"amount": 0.36, "size": 1.1, "roughness": 0.55}, "vignette": {"amount": 0.22}}},
+    T(0.4, 0.005, 0.96, preserve_key=0.45, lift_shadows=False), {"keep_texture": True},
+    "Documented: repeated site visits studying how light meets structure; analogue practice. Interpretation: raking-light contrast, textured grain, deep blacks.",
+    "Hélène Binet", R_ARCH)
+
+add("ph_sugimoto", "Hiroshi Sugimoto – Seascape", _PH,
+    "Meditative long-exposure minimalism: silk-smooth water and sky as even grey planes, a precise horizon, timeless stillness.",
+    ["sugimoto", "hiroshi sugimoto", "seascape", "long exposure", "michael kenna", "kenna", "minimalist black and white", "zen", "smooth water", "horizon"],
+    {"geometry": {"auto_horizon": 1.0},
+     "tone": {"contrast": 1.0, "highlights": -18, "shadows": 25, "blacks": 0, "fade": 0.03, "toe": 0.7, "shoulder": 0.8},
+     "presence": {"clarity": -18, "texture": -22},
+     "color": {"bw": {"amount": 1.0, "mix": bwmix(red=0.1, orange=0.1, blue=0.05),
+                      "tone": {"h": 245, "s": 0.07}}},
+     "detail": {"nr_luma": 0.7, "nr_chroma": 0.6, "sharpen": 0.25},
+     "effects": {"grain": {"amount": 0.0}, "vignette": {"amount": 0.0}, "glow": {"amount": 0.05}}},
+    T(0.52, 0.04, 0.95, preserve_key=0.45, auto_black=False, lift_shadows=True), {"nr": 1.5},
+    "Documented: Seascapes since 1980, large-format, exposures up to hours; B&W planes of water and sky split by a centred horizon. Interpretation: heavy noise smoothing, no grain, soft cool-selenium tone.",
+    "Hiroshi Sugimoto", R_SUGIMOTO)
+
 
 DEFAULT_STYLE = "natural"
 _BY_ID = {s.id: s for s in STYLES}

@@ -102,8 +102,9 @@ def plan(rgb: np.ndarray, an: Analysis, style: styles.Style, strength: float = 1
     # ---- faces / portrait --------------------------------------------------
     if an.faces:
         notes.append(f"{len(an.faces)} face(s) found: protecting skin tones and brightening the subject")
-        r["presence"]["clarity"] *= 0.5
-        r["presence"]["texture"] = min(r["presence"]["texture"], 0)
+        if not adapt.get("keep_texture"):
+            r["presence"]["clarity"] *= 0.5
+            r["presence"]["texture"] = min(r["presence"]["texture"], 0)
         r["color"]["skin_protect"] = 1.0
         if adapt.get("faces") and r["local"]["skin_smooth"] <= 0:
             r["local"]["skin_smooth"] = 0.25

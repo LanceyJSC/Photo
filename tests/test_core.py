@@ -189,3 +189,14 @@ def test_process_writes_outputs_and_sidecar(dng, tmp_path):
     assert np.abs(a - b).mean() < 2.0
     # original untouched
     assert dng.exists()
+
+
+def test_photographer_styles_exist_with_sources():
+    ph = [s for s in styles.STYLES if s.category == "Photographers"]
+    assert len(ph) >= 20
+    for s in ph:
+        assert s.photographer and "Documented" in s.notes or "Interpretation" in s.notes
+    s, _, _ = styles.match("edit it like ansel adams")
+    assert s.id == "ph_adams"
+    s, _, _ = styles.match("daido moriyama")
+    assert s.id == "ph_moriyama"
