@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Darkroom</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span>Darkroom <small>background RAW editor</small></div>
+  <label class="btn primary" for="file">Add photos</label>
+  <input id="file" type="file" multiple hidden accept=".dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.rwl,.pef,.raw,.3fr,.iiq,.erf,.mrw,.srw,.x3f,.jpg,.jpeg,.png,.tif,.tiff,.webp">
+</header>
+
+<main>
+  <aside id="queue" aria-label="Photos"></aside>
+
+  <section id="stage">
+    <div id="dropzone">
+      <div class="dz-inner">
+        <h1>Drop your photos here</h1>
+        <p>RAW (CR2/CR3, NEF, ARW, RAF, ORF, RW2, DNG &hellip;) or JPEG/TIFF. Then tell me the look you want &mdash; street, architecture, portrait, film&hellip; &mdash; and I'll edit them in the background.</p>
+      </div>
+    </div>
+    <div id="viewer" hidden>
+      <div class="compare" id="compare">
+        <img id="imgBefore" alt="Before" draggable="false">
+        <img id="imgAfter" alt="After" draggable="false">
+        <div class="handle" id="handle"><span></span></div>
+        <span class="tag tl">Before</span><span class="tag tr" id="afterTag">After</span>
+        <div class="busy" id="busy" hidden><div class="spin"></div><div id="busyText"></div></div>
+      </div>
+      <div class="viewer-bar">
+        <div id="fileName"></div>
+        <div id="progressWrap" hidden><div class="bar"><i id="progressBar"></i></div><span id="stageText"></span></div>
+        <div id="downloads"></div>
+      </div>
+    </div>
+  </section>
+
+  <aside id="panel" hidden>
+    <h2>What look are you going for?</h2>
+    <div class="ask">
+      <input id="lookText" type="text" placeholder="e.g. moody black &amp; white street, grainy" autocomplete="off">
+      <button class="btn" id="matchBtn">Find look</button>
+    </div>
+    <div id="matchNote" class="hint"></div>
+
+    <div id="styleList"></div>
+
+    <h3>Strength <output id="strengthOut">100%</output></h3>
+    <input type="range" id="strength" min="0" max="150" value="100">
+
+    <details id="adjust">
+      <summary>Fine-tune</summary>
+      <div id="sliders"></div>
+    </details>
+
+    <details>
+      <summary>Export</summary>
+      <div class="row"><label><input type="checkbox" class="fmt" value="jpg" checked> JPEG</label>
+        <label><input type="checkbox" class="fmt" value="tif"> 16-bit TIFF</label>
+        <label><input type="checkbox" class="fmt" value="png"> 16-bit PNG</label></div>
+      <div class="row"><label>Max long side (px) <input id="maxSide" type="number" min="256" max="20000" placeholder="original"></label></div>
+    </details>
+
+    <label class="row"><input type="checkbox" id="applyAll"> Apply to all waiting photos</label>
+    <button class="btn primary wide" id="editBtn">Edit photo</button>
+    <div id="notes"></div>
+  </aside>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
