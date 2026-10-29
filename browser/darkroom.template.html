@@ -22,6 +22,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .wrap{max-width:760px;margin:0 auto}
 header{display:flex;align-items:center;gap:12px;padding-block:14px 10px}
 .brand{font:700 22px/1 var(--display);letter-spacing:-.01em;flex:1;min-width:0}
+.ver{font:400 10px var(--mono);color:var(--mute);margin-left:6px;letter-spacing:.06em}
 .brand i{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--accent);margin-right:9px;vertical-align:1px;box-shadow:0 0 14px var(--accent)}
 button,.btn{font:500 14px/1 var(--body);color:var(--fg);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:0 14px;min-height:44px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
 button:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -44,6 +45,12 @@ button:disabled{opacity:.45;cursor:default}
 .frame{position:relative;background:#000;border-radius:12px;overflow:hidden;height:min(46svh,520px);height:min(46vh,520px);display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
 @supports (height:1svh){.frame{height:min(46svh,520px)}}
 .frame canvas{max-width:100%;max-height:100%;display:block}
+.pair{position:absolute;inset:0;touch-action:pan-y;cursor:ew-resize;user-select:none;-webkit-user-select:none}
+.frame .pair canvas{position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;object-fit:contain}
+#orig{clip-path:inset(0 calc(100% - var(--pos,50%)) 0 0)}
+.handle{position:absolute;top:0;bottom:0;left:var(--pos,50%);width:2px;background:#fff;opacity:.85;pointer-events:none}
+.handle span{position:absolute;top:50%;left:-17px;width:36px;height:36px;margin-top:-18px;border-radius:50%;background:#000a;border:2px solid #fff}
+.badge.r{left:auto;right:10px}
 .badge{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#000b;color:#fff;border-radius:999px;padding:5px 10px;font:500 10.5px var(--mono);letter-spacing:.05em;text-transform:uppercase}
 .busy{position:absolute;inset:0;background:#000a;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:#fff;font:500 13px var(--body)}
 .spin{width:28px;height:28px;border:3px solid #fff3;border-top-color:var(--accent);border-radius:50%;animation:s .9s linear infinite}
@@ -100,7 +107,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 
 <div class="wrap">
   <header>
-    <div class="brand"><i></i>Darkroom</div>
+    <div class="brand"><i></i>Darkroom <small id="ver" class="ver"></small></div>
     <label class="btn" for="pick" id="addBtn" hidden>Add photos</label>
     <input id="pick" type="file" accept="image/*" multiple hidden>
   </header>
@@ -124,8 +131,8 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
   <section id="app" hidden>
     <div class="stage">
       <div class="frame" id="frame">
-        <canvas id="main"></canvas>
-        <span class="badge" id="badge">Original</span>
+        <div class="pair" id="pair"><canvas id="main"></canvas><canvas id="orig" hidden></canvas><div class="handle" id="handle" hidden><span></span></div></div>
+        <span class="badge" id="badgeO" hidden>Original</span><span class="badge r" id="badge">Original</span>
         <div class="busy" id="busy" hidden><div class="spin"></div><span id="busyText">Developing…</span></div>
       </div>
       <div class="strip" id="strip"></div>
@@ -144,7 +151,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 
 <div class="bar" id="bar" hidden>
   <div class="wrap">
-    <button id="hold" title="Press and hold to see the original">Hold: original</button>
+    <button id="hold" title="Press and hold to see the original">Original</button>
     <button id="savePng" disabled title="Lossless, larger file">PNG</button>
     <button class="primary" id="save" disabled>Choose a look</button>
   </div>
@@ -985,6 +992,8 @@ function retouchFor(st, an) {
   if (!usable) { rt.subject_ev = rt.bg_ev = rt.bg_sat = rt.bg_clarity = rt.subject_clarity = 0; }
   if (!person) { rt.skin_smooth = 0; }
   if (!(an.faces && an.faces.length)) rt.eye_pop = 0;
+  for (const k of ["subject_ev", "bg_ev", "bg_sat", "bg_clarity", "subject_clarity"]) rt[k] *= 1.3;     // make the separation clearly visible
+  rt.skin_smooth = Math.min(0.6, rt.skin_smooth * 1.2);
   return rt;
 }
 function retouchNotes(rt, an) {
@@ -1142,7 +1151,7 @@ function develop(id, r, an, fullLong) {
   opGrade(lab, r.color.grade); opBW(lab, r.color.bw); opCurveFade(lab, r.tone); opDesatExtremes(lab, r.tone);
   opEffects(lab, r.effects, long, 7);
   opSharpen(lab, r.detail, long);
-  lab.note = note;
+  lab.note = note; lab.crop = crop;
   return lab;
 }
 function renderToCanvas(canvas, lab, dither) {
@@ -1154,30 +1163,42 @@ function renderToCanvas(canvas, lab, dither) {
 
 /* ============================================================ machine learning */
 /* 1. Vision: Google's EfficientNet-Lite0 (trained on 1.2 M photos, 1000 classes) running in a Web Worker. */
+const VERSION = "v8";
+const diag = { mode: {}, ms: {}, err: {}, dng: null };
 const _vw = {}; let _vid = 0; const _vp = new Map();
 const MODELS = () => ({ cls: window.__VISION__, seg: window.__SEG__ });
+/** Run script text on the main thread without eval (inline <script> is allowed wherever this page itself runs). */
+function injectScript(id, text) { if (document.getElementById("inj-" + id)) return; const el = document.createElement("script"); el.id = "inj-" + id; el.textContent = text; document.head.appendChild(el); }
+function useMainThread(name, w) {
+  injectScript("vision", document.getElementById("visionSrc").textContent);
+  window.VISION.load(name, MODELS()[name]); w.main = window.VISION; diag.mode[name] = "main thread";
+}
 function visionInit(name) {
   if (_vw[name]) return _vw[name].ready;
   const w = { ready: null, worker: null, main: null };
   _vw[name] = w;
   w.ready = new Promise(res => {
-    const src = document.getElementById("visionSrc").textContent;
+    let done = false; const finish = ok => { if (!done) { done = true; res(ok); } };
+    const fallback = why => { if (done) return; diag.err[name] = why; try { if (w.worker) w.worker.terminate(); } catch (e) { /* ignore */ } w.worker = null; try { useMainThread(name, w); finish(true); } catch (e2) { diag.mode[name] = "failed"; diag.err[name] = String(e2 && e2.message || e2); finish(false); } };
     try {
-      const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" })), worker = new Worker(url);
-      worker.onmessage = e => { const m = e.data; if (m.type === "ready") res(true); else { const h = _vp.get(m.id); if (h) { _vp.delete(m.id); m.type === "result" ? h.ok(m) : h.no(new Error(m.message)); } } };
-      worker.onerror = () => res(false);
+      const src = document.getElementById("visionSrc").textContent, url = URL.createObjectURL(new Blob([src], { type: "text/javascript" })), worker = new Worker(url);
+      worker.onmessage = e => { const m = e.data; if (m.type === "ready") { diag.mode[name] = "background worker"; finish(true); } else { const h = _vp.get(m.id); if (h) { _vp.delete(m.id); m.type === "result" ? h.ok(m) : h.no(new Error(m.message)); } } };
+      worker.onerror = () => fallback("worker blocked");
       worker.postMessage({ type: "init", models: { [name]: MODELS()[name] } }); w.worker = worker;
-    } catch (e) {
-      try { w.main = new Function(src + ";return VISION;")(); w.main.load(name, JSON.parse(JSON.stringify(MODELS()[name]))); res(true); } catch (e2) { res(false); }
-    }
+      setTimeout(() => fallback("worker did not start"), 9000);
+    } catch (e) { fallback("worker unavailable"); }
   });
   return w.ready;
 }
 async function visionRun(name, pixels) {
   if (!(await visionInit(name))) return null;
-  const w = _vw[name];
-  if (w.main) { await tick(); return w.main.run(name, pixels); }
-  return new Promise((ok, no) => { const id = ++_vid; _vp.set(id, { ok, no }); w.worker.postMessage({ type: "run", id, name, pixels }, [pixels.buffer]); });
+  const w = _vw[name], t0 = performance.now();
+  try {
+    let r;
+    if (w.main) { await tick(); await tick(); r = w.main.run(name, pixels); }
+    else r = await new Promise((ok, no) => { const id = ++_vid; _vp.set(id, { ok, no }); w.worker.postMessage({ type: "run", id, name, pixels }, [pixels.buffer]); });
+    diag.ms[name] = Math.round(performance.now() - t0); return r;
+  } catch (e) { diag.err[name] = String(e && e.message || e); diag.mode[name] = "failed"; return null; }
 }
 function toTensor(canvas) {
   const c = document.createElement("canvas"); c.width = c.height = 224; const x = c.getContext("2d", { willReadFrequently: true });
@@ -1293,6 +1314,8 @@ function describeFindings(p) {
   lines.push(["Colour", an.mono ? "monochrome" : `${an.chroma < 0.04 ? "muted" : an.chroma > 0.11 ? "very saturated" : "normal saturation"}${an.cast > 0.2 ? `; neutral tones are off by ${an.wb[0] > 0 ? "+" : ""}${an.wb[0].toFixed(0)} mired` : "; no reliable colour cast"}`]);
   if (an.sky > 0) lines.push(["Sky", `${Math.round(an.sky * 100)}% of the frame`]);
   if (an.geo && an.geo.conf > 0.25) lines.push(["Lines", `vertical lines ${Math.abs(an.geo.vkeyN || 0) > 0.03 ? "converge" : "tilt"} (${Math.abs(an.geo.vkeyN || 0) > 0.03 ? Math.round(Math.abs(an.geo.vkeyN) * 100) + "% keystone" : Math.abs(an.geo.rot).toFixed(1) + "°"}), so architecture looks straighten them`]);
+  const dm = n => diag.mode[n] === "failed" ? `failed (${diag.err[n] || "unknown"})` : `ok, ${((diag.ms[n] || 0) / 1000).toFixed(1)} s, ${diag.mode[n] || "?"}`;
+  lines.push(["Engine " + VERSION, `scene network ${dm("cls")}; subject network ${dm("seg")}${diag.dng ? "; RAW reader " + diag.dng : ""}`]);
   const n = taste.picks.length; lines.push(["Your taste", n ? `learning from ${n} of your picks` : "nothing learned yet; pick looks and it adapts"]);
   return lines;
 }
@@ -1305,16 +1328,18 @@ const MAX_EXPORT = 2600, PREVIEW = 1300, THUMB = 420, RAW_MASTER = 2800;
 
 /* ============================================================ RAW (DNG) input: iPhone ProRAW and Bayer RAW */
 function dngDecode(buffer, maxSide) {
+  const src = document.getElementById("dngSrc").textContent;
+  const onMain = () => { injectScript("dng", src); const r = window.DNG.decode(buffer, maxSide, f => status(`Reading RAW file… ${Math.round(f * 100)}%`)); diag.dng = "main thread"; return { w: r.w, h: r.h, rgb: r.rgb, meta: r.meta }; };
   return new Promise((ok, no) => {
-    const src = document.getElementById("dngSrc").textContent;
+    let settled = false, started = false; const copy = buffer.slice(0);
+    const fall = why => { if (settled) return; settled = true; diag.dng = "main thread (" + why + ")"; setTimeout(() => { try { ok(onMain()); } catch (e) { no(e); } }, 30); };
     try {
       const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
-      w.onmessage = e => { if (e.data.type === "progress") { status(`Reading RAW file… ${Math.round(e.data.f * 100)}%`); return; } w.terminate(); e.data.type === "done" ? ok(e.data) : no(new Error(e.data.message)); };
-      w.onerror = () => { w.terminate(); no(new Error("RAW decoder failed to start")); };
-      w.postMessage({ buffer, maxSide, id: 1 }, [buffer]);
-    } catch (e) {
-      try { const r = new Function(src + ";return DNG;")().decode(buffer, maxSide); ok({ w: r.w, h: r.h, rgb: r.rgb, meta: r.meta }); } catch (e2) { no(e2); }
-    }
+      w.onmessage = e => { started = true; if (e.data.type === "progress") { status(`Reading RAW file… ${Math.round(e.data.f * 100)}%`); return; } if (settled) return; settled = true; w.terminate(); diag.dng = "background worker"; e.data.type === "done" ? ok(e.data) : no(new Error(e.data.message)); };
+      w.onerror = () => { w.terminate(); buffer = copy; fall("worker blocked"); };
+      setTimeout(() => { if (!started) { w.terminate(); buffer = copy; fall("worker did not start"); } }, 7000);
+      w.postMessage({ buffer: buffer, maxSide, id: 1 }, [buffer]);
+    } catch (e) { buffer = copy; fall("worker unavailable"); }
   });
 }
 /** Area-average a linear float image down to at most maxSide. */
@@ -1394,12 +1419,15 @@ function renderStrip() {
   });
   if (state.photos.length < 2) s.hidden = true; else s.hidden = false;
 }
-function drawOriginal() { const p = state.photos[state.cur]; const m = $("#main"); m.width = p.prev.canvas.width; m.height = p.prev.canvas.height; m.getContext("2d").drawImage(p.prev.canvas, 0, 0); $("#badge").textContent = "Original"; }
+function drawOriginal() {
+  const p = state.photos[state.cur], m = $("#main"); m.width = p.prev.canvas.width; m.height = p.prev.canvas.height; m.getContext("2d").drawImage(p.prev.canvas, 0, 0);
+  $("#orig").hidden = true; $("#handle").hidden = true; $("#badgeO").hidden = true; $("#badge").textContent = "Original";
+}
 async function selectPhoto(i) {
   state.cur = i; state.token++; const p = state.photos[i];
   renderStrip(); $("#looks").innerHTML = ""; $("#search").value = "";
   state.chosen = p.chosen; updateSave();
-  if (p.chosen && p.cache.has(p.chosen)) { drawCanvas(p.cache.get(p.chosen), DATA.byId[p.chosen].name); } else drawOriginal();
+  if (p.chosen && p.cache.has(p.chosen)) { drawCanvas(p.cache.get(p.chosen), DATA.byId[p.chosen].name, p.chosen); } else drawOriginal();
   $("#lookTitle").textContent = "Best for this photo"; $("#lookSub").textContent = "Looking at your photo…";
   await tick();
   if (!p.an) {
@@ -1461,7 +1489,7 @@ async function renderLooks(p) {
       p.plans.set(id, { r, notes });
     }
     const { r } = p.plans.get(id), lab = develop(p.thumb.id, r, p.an, p.thumb.canvas.width);
-    (p.fnotes = p.fnotes || {})[id] = lab.note;
+    (p.fnotes = p.fnotes || {})[id] = lab.note; (p.crops = p.crops || {})[id] = lab.crop;
     for (const t of p.tiles.get(id) || []) { renderToCanvas($("canvas", t), lab, false); t.classList.add("done"); }
     if (id === p.rec.list[0] || (p.tiles.get(id) || []).length) await tick();
   }
@@ -1473,21 +1501,30 @@ function shrinkLab(lab, maxDim) {
 }
 
 /* ------------------------------------------------------------ choosing + saving */
-function drawCanvas(src, label) { setTimeout(updateWhy, 0); const m = $("#main"); m.width = src.width; m.height = src.height; m.getContext("2d").drawImage(src, 0, 0); $("#badge").textContent = label.replace(/^[^–]+– /, ""); }
+function drawCanvas(src, label, id) {
+  setTimeout(updateWhy, 0);
+  const p = state.photos[state.cur], m = $("#main"), o = $("#orig"); m.width = src.width; m.height = src.height; m.getContext("2d").drawImage(src, 0, 0);
+  o.width = src.width; o.height = src.height; const cr = id && p.crops && p.crops[id], pc = p.prev.canvas;
+  const sx = cr ? cr.x * pc.width : 0, sy = cr ? cr.y * pc.height : 0, sw = cr ? cr.w * pc.width : pc.width, sh = cr ? cr.h * pc.height : pc.height;
+  o.getContext("2d").drawImage(pc, sx, sy, sw, sh, 0, 0, src.width, src.height);
+  o.hidden = false; $("#handle").hidden = false; $("#badgeO").hidden = false;
+  $("#badge").textContent = label.replace(/^[^–]+– /, "");
+  if (!$("#pair").dataset.moved) $("#pair").style.setProperty("--pos", "50%");
+}
 async function choose(id) {
   const p = state.photos[state.cur]; p.chosen = id; state.chosen = id;
   document.querySelectorAll(".tile").forEach(t => t.classList.toggle("sel", t.dataset.id === id));
   updateSave();
-  if (p.cache.has(id)) return drawCanvas(p.cache.get(id), DATA.byId[id].name);
+  if (p.cache.has(id)) return drawCanvas(p.cache.get(id), DATA.byId[id].name, id);
   busy(true, "Developing…"); await tick(); await tick();
   const c = document.createElement("canvas");
   const plan = p.plans.get(id) || planRecipe(p.an, DATA.byId[id], shrinkLab(toLab(p.thumb.id), 190));
   p.plans.set(id, plan);
   const dl = develop(p.prev.id, plan.r, p.an, p.prev.canvas.width);
-  (p.fnotes = p.fnotes || {})[id] = dl.note;
+  (p.fnotes = p.fnotes || {})[id] = dl.note; (p.crops = p.crops || {})[id] = dl.crop;
   renderToCanvas(c, dl, true);
   p.cache.set(id, c); if (p.cache.size > 6) p.cache.delete(p.cache.keys().next().value);
-  if (state.photos[state.cur] === p && p.chosen === id) drawCanvas(c, DATA.byId[id].name);
+  if (state.photos[state.cur] === p && p.chosen === id) drawCanvas(c, DATA.byId[id].name, id);
   busy(false);
 }
 function renderFound(p) {
@@ -1557,10 +1594,17 @@ $("#save").onclick = () => exportCurrent("jpg");
 $("#savePng").onclick = () => exportCurrent("png");
 $("#frameToggle").addEventListener("change", e => { state.autoFrame = e.target.checked; state.photos.forEach(p => p.cache.clear()); const p = state.photos[state.cur]; if (!p) return; buildLooks(p); renderLooks(p); if (state.chosen) { const id = state.chosen; p.chosen = null; choose(id); } });
 const hold = $("#hold");
-const showOrig = () => { if (state.cur >= 0) drawOriginal(); };
-const showEdit = () => { const p = state.photos[state.cur]; if (p && state.chosen && p.cache.has(state.chosen)) drawCanvas(p.cache.get(state.chosen), DATA.byId[state.chosen].name); };
+const showOrig = () => { if ($("#orig").hidden) return; $("#pair").style.setProperty("--pos", "100%"); $("#handle").hidden = true; };
+const showEdit = () => { if ($("#orig").hidden) return; $("#pair").style.setProperty("--pos", ($("#pair").dataset.pos || "50%")); $("#handle").hidden = false; };
 hold.addEventListener("pointerdown", e => { e.preventDefault(); showOrig(); });
 ["pointerup", "pointercancel", "pointerleave"].forEach(t => hold.addEventListener(t, showEdit));
+(function () {   // drag across the photo to compare original (left) with the edit (right)
+  const pr = $("#pair"); let drag = false;
+  const move = e => { const r = pr.getBoundingClientRect(), v = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100)) + "%"; pr.style.setProperty("--pos", v); pr.dataset.pos = v; pr.dataset.moved = "1"; };
+  pr.addEventListener("pointerdown", e => { if ($("#orig").hidden) return; drag = true; move(e); });
+  window.addEventListener("pointermove", e => drag && move(e));
+  ["pointerup", "pointercancel"].forEach(t => window.addEventListener(t, () => (drag = false)));
+})();
 $("#search").addEventListener("input", e => {
   const q = e.target.value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
   document.querySelectorAll("#looks .tiles").forEach(g => {
@@ -1571,5 +1615,6 @@ $("#search").addEventListener("input", e => {
   });
 });
 tasteLoad(); visionInit("cls"); visionInit("seg");
+$("#ver").textContent = VERSION;
 window.__darkroom = { estimateNoise, segmentPhoto, DATA, toLab, shrinkLab, renderToCanvas, tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
 </script>
