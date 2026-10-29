@@ -55,6 +55,12 @@ Describe a look in words (`"dark moody portrait, warm, grainy"`) and it picks th
 
 `browser/darkroom.html` is the whole editor as one static page: the same 56 looks, exposure/highlight/skin/sky analysis, face detection (OpenCV's Haar model ported to JS) and auto-straightening, all running in the phone's browser. Open it from any static host (e.g. GitHub Pages) or as a Claude artifact; photos never leave the device. Limits versus the full app: JPEG/HEIC/PNG input only (no RAW), exports up to ~2600 px on the long side, no noise reduction. Rebuild it with `python scripts/build_browser.py` after changing `darkroom/styles.py` or `browser/darkroom.template.html`.
 
+### Machine learning in the phone version
+
+* **Seeing the photo.** Every photo goes through Google's EfficientNet-Lite0 (an ImageNet network trained on 1.2 M labelled photos, Apache-2.0, from MediaPipe). It runs on the phone in a Web Worker using a small JavaScript inference engine (`browser/vision_engine.js`) with the weights exported by `scripts/export_vision_model.py` as 8-bit. Its answer ("espresso 90%", "Egyptian cat 77%", "obelisk 17%") is mapped to genres (`scripts/vision_groups.py`) to choose which looks to recommend; measurements (light, colour cast, faces, sky, lines) are shown in *What I found in this photo*. The JS engine was checked against the reference TFLite model (same top answer; probabilities within 0.011 because of the 8-bit weights).
+* **Learning your taste.** The network's 1280-number description of each photo is stored (random-projected to 256 numbers) with the look you picked. For a new photo, a nearest-neighbour model finds the photos you handled before and recommends what you chose on them, plus your overall favourites ("Picked for you"). Taps count 0.4, saves count 1. It is saved to your account when the page has a database, otherwise in the browser.
+* **Not learned:** the look recipes themselves. Training a network to edit like professionals needs thousands of photos with expert edits (e.g. Adobe FiveK), which were not reachable from the build environment. Your own picks are the training data for taste; if you have a set of your own edited photos, the next step is to train on those.
+
 ## On your phone with the full app (RAW, no Xcode, no App Store)
 
 Darkroom is a web app, so the phone only needs a browser. Open it in Safari/Chrome and choose *Add to Home Screen* to install it like an app. The editing itself runs on whatever machine runs Darkroom, so you need one of:

@@ -84,6 +84,11 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 .bar #hold{flex:none;touch-action:none;user-select:none;-webkit-user-select:none}
 .bar #savePng{flex:none}
 .note{color:var(--mute);font-size:12.5px;margin-top:22px}
+.found{margin:0 0 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:0 12px}
+.found summary{cursor:pointer;min-height:42px;display:flex;align-items:center}
+.found dl{margin:0 0 12px;display:grid;grid-template-columns:minmax(92px,auto) 1fr;gap:6px 12px;font-size:13px}
+.found dt{color:var(--mute);font:500 11px var(--mono);letter-spacing:.05em;text-transform:uppercase;padding-top:2px}
+.found dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .why{font:400 11px/1.45 var(--mono);color:var(--mute);margin:6px 0 0;min-height:1.45em;letter-spacing:.01em;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .switch{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--mute);margin:0 0 12px;min-height:34px}
 .switch input{width:20px;height:20px;accent-color:var(--accent)}
@@ -128,6 +133,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 
     <h2 id="lookTitle">Best for this photo</h2>
     <p class="sub" id="lookSub">Looking at your photo…</p>
+    <details class="found" id="foundBox"><summary class="mono">What I found in this photo</summary><dl id="found"></dl></details>
     <div class="chips" id="kinds" role="group" aria-label="Type of photo"></div>
     <label class="switch"><input type="checkbox" id="frameToggle" checked> <span>Smart framing: crops to improve composition</span></label>
     <input class="search" id="search" type="search" placeholder="Search looks or photographers" autocomplete="off" enterkeyhint="search">
@@ -145,6 +151,9 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 
 <script>
 /*__DATA__*/
+</script>
+<script type="text/plain" id="visionSrc">
+/*__ENGINE__*/
 </script>
 <script>
 "use strict";
@@ -874,8 +883,14 @@ function detectFaces(L, w, h) {
   }
   return cl.filter(c => c.n >= 4).map(c => [c.x / w, c.y / h, c.s / w, c.s / h]);
 }
-function sceneKind(an) {
+/** Scene type: what the neural network recognised first; measurements only decide when it is unsure. */
+function sceneKind(an, ml) {
   if (an.faces && an.faces.length) return "portrait";
+  if (ml) {
+    const g = ml.g, sc = { landscape: g.landscape + 0.7 * g.sea, architecture: g.architecture, interior: g.interior, food: g.food, animal: g.animal, street: g.street, portrait: 0.8 * g.person };
+    let best = null, bv = 0; for (const k in sc) if (sc[k] > bv) { bv = sc[k]; best = k; }
+    if (best && bv > 0.22 && !(an.night && best !== "food")) return best;
+  }
   if (an.night) return "night";
   if (an.edge > 0.025 && an.vert > 0.2 && an.vert + an.horiz > 0.42) return "architecture";
   if (an.sky > 0.18) return "landscape";
@@ -886,10 +901,13 @@ const POOLS = {
   landscape: ["land_natural", "ph_adams", "land_golden", "land_vivid", "ph_salgado", "film_velvia", "land_moody", "ph_sugimoto"],
   architecture: ["arch_clean", "ph_stoller", "arch_bw", "ph_shulman", "arch_dramatic", "ph_baan", "arch_minimal", "ph_binet"],
   night: ["street_neon_night", "night_city", "film_cinestill", "ph_hido", "bw_noir", "cine_teal_orange"],
-  street: ["street_classic", "street_bw_trix", "ph_hcb", "ph_moriyama", "ph_herzog", "ph_leiter", "street_gritty", "ph_webb", "film_portra", "film_kodachrome"],
+  street: ["street_classic", "street_bw_trix", "ph_hcb", "ph_moriyama", "ph_herzog", "ph_leiter", "street_gritty", "ph_webb", "portrait_warm_film", "film_kodachrome"],
+  interior: ["arch_interior", "arch_clean", "arch_minimal", "ph_shulman", "portrait_warm_film", "ph_baan", "arch_bw", "ph_binet"],
+  food: ["food_warm", "portrait_warm_film", "land_vivid", "film_ektar", "ph_eggleston", "product_clean", "ph_leiter", "film_kodachrome"],
+  animal: ["land_natural", "ph_salgado", "film_kodachrome", "film_ektar", "bw_hp5", "land_moody", "ph_adams", "ph_koudelka"],
 };
-function recommend(an, forced) {
-  const kind = forced || sceneKind(an), out = ["natural"];
+function recommend(an, forced, ml) {
+  const kind = forced || sceneKind(an, ml), out = ["natural"];
   for (const id of POOLS[kind]) if (!out.includes(id)) out.push(id);
   let list = out.slice(0, 8);
   if (an.mono) list = list.filter(id => id === "natural" || DATA.byId[id].bw).concat(DATA.styles.filter(s => s.bw && !list.includes(s.id)).map(s => s.id)).slice(0, 8);
@@ -995,6 +1013,113 @@ function renderToCanvas(canvas, lab, dither) {
   toBytes(lab, out.data, dither); ctx.putImageData(out, 0, 0);
 }
 
+
+/* ============================================================ machine learning */
+/* 1. Vision: Google's EfficientNet-Lite0 (trained on 1.2 M photos, 1000 classes) running in a Web Worker. */
+let _vw = null, _vready = null, _vid = 0; const _vp = new Map(); let _vmain = null;
+function visionInit() {
+  if (_vready) return _vready;
+  _vready = new Promise(res => {
+    try {
+      const src = document.getElementById("visionSrc").textContent, url = URL.createObjectURL(new Blob([src], { type: "text/javascript" })), w = new Worker(url);
+      w.onmessage = e => { const m = e.data; if (m.type === "ready") res(true); else { const h = _vp.get(m.id); if (h) { _vp.delete(m.id); m.type === "result" ? h.ok(m) : h.no(new Error(m.message)); } } };
+      w.onerror = () => res(false);
+      w.postMessage({ type: "init", model: window.__VISION__ }); _vw = w;
+    } catch (e) {
+      try { _vmain = new Function(document.getElementById("visionSrc").textContent + ";return VISION;")(); _vmain.load(JSON.parse(JSON.stringify(window.__VISION__))); res(true); } catch (e2) { res(false); }
+    }
+  });
+  return _vready;
+}
+async function visionRun(pixels) {
+  if (!(await visionInit())) return null;
+  if (_vmain) { await tick(); return _vmain.run(pixels); }
+  return new Promise((ok, no) => { const id = ++_vid; _vp.set(id, { ok, no }); _vw.postMessage({ type: "run", id, pixels }, [pixels.buffer]); });
+}
+function toTensor(canvas) {
+  const c = document.createElement("canvas"); c.width = c.height = 224; const x = c.getContext("2d", { willReadFrequently: true });
+  x.imageSmoothingQuality = "high"; x.drawImage(canvas, 0, 0, 224, 224);
+  const d = x.getImageData(0, 0, 224, 224).data, t = new Float32Array(224 * 224 * 3);
+  for (let i = 0, j = 0; i < d.length; i += 4) { t[j++] = (d[i] - 127) / 128; t[j++] = (d[i + 1] - 127) / 128; t[j++] = (d[i + 2] - 127) / 128; }
+  return t;
+}
+async function classifyPhoto(canvas) {
+  try {
+    const r = await visionRun(toTensor(canvas)); if (!r) return null;
+    const probs = r.probs, labels = window.__VISION__.labels, order = Array.from(probs.keys()).sort((a, b) => probs[b] - probs[a]).slice(0, 5);
+    const g = {}; for (const k in window.__GROUPS__) { let s = 0; for (const i of window.__GROUPS__[k]) s += probs[i]; g[k] = s; }
+    return { top: order.map(i => ({ label: labels[i], p: probs[i] })), g, embed: r.embed };
+  } catch (e) { return null; }
+}
+
+/* 2. Taste: a nearest-neighbour model trained on YOUR picks. Each pick stores the photo's learned
+      embedding (random-projected to 256 numbers) and the look you chose; new photos are matched to
+      the photos you handled before. */
+const taste = { picks: [], vecs: [], ref: null, ready: false };
+function rng32(a) { return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+let _proj = null;
+function projection() {
+  if (_proj) return _proj; const r = rng32(20240611), D = 256, N = 1280; _proj = new Float32Array(D * N);
+  for (let i = 0; i < _proj.length; i++) _proj[i] = Math.sqrt(-2 * Math.log(r() + 1e-9)) * Math.cos(2 * Math.PI * r()) / Math.sqrt(D);
+  return _proj;
+}
+function embedVec(e) {
+  const P = projection(), D = 256, N = e.length; let n = 0; for (let i = 0; i < N; i++) n += e[i] * e[i]; n = Math.sqrt(n) || 1;
+  const out = new Float32Array(D); let m = 0;
+  for (let d = 0; d < D; d++) { let s = 0; const o = d * N; for (let i = 0; i < N; i++) s += P[o + i] * e[i]; out[d] = s / n; m += out[d] * out[d]; }
+  m = Math.sqrt(m) || 1; for (let d = 0; d < D; d++) out[d] /= m; return out;
+}
+const q8 = v => { let s = ""; const b = new Int8Array(v.length); for (let i = 0; i < v.length; i++) b[i] = Math.max(-127, Math.min(127, Math.round(v[i] * 127))); const u = new Uint8Array(b.buffer); for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); };
+const dq8 = s => { const bin = atob(s), v = new Float32Array(bin.length); let m = 0; for (let i = 0; i < bin.length; i++) { const x = (bin.charCodeAt(i) << 24) >> 24; v[i] = x / 127; m += v[i] * v[i]; } m = Math.sqrt(m) || 1; for (let i = 0; i < v.length; i++) v[i] /= m; return v; };
+async function tasteLoad() {
+  try { const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]); const uid = db && user ? await user.id() : null;
+    if (uid) { taste.ref = db.doc("data/users/" + uid + "/taste"); const snap = await taste.ref.get(); if (snap.exists) taste.picks = snap.data().picks || []; }
+  } catch (e) { taste.ref = null; }
+  if (!taste.ref) { try { taste.picks = JSON.parse(localStorage.getItem("darkroom.taste") || "[]"); } catch (e) { taste.picks = []; } }
+  taste.vecs = taste.picks.map(p => dq8(p.e)); taste.ready = true;
+}
+let _tsave = Promise.resolve();
+function tasteSave() {
+  _tsave = _tsave.then(async () => {
+    if (taste.ref) { try { await taste.ref.set({ picks: taste.picks }); } catch (e) { /* offline: keep going */ } }
+    else { try { localStorage.setItem("darkroom.taste", JSON.stringify(taste.picks)); } catch (e) { /* private mode */ } }
+  });
+}
+function tasteRecord(p, styleId, weight) {
+  if (!p.vec) return;
+  const last = taste.picks[taste.picks.length - 1];
+  if (last && last.k === p.key && last.s === styleId && last.w >= weight) return;
+  taste.picks.push({ s: styleId, w: weight, t: Date.now(), k: p.key, e: q8(p.vec) }); taste.vecs.push(dq8(taste.picks[taste.picks.length - 1].e));
+  while (taste.picks.length > 400) { taste.picks.shift(); taste.vecs.shift(); }
+  tasteSave();
+}
+/** Looks ranked by how often you chose them on photos like this one, plus your overall favourites. */
+function tasteRank(vec) {
+  const n = taste.picks.length; if (!vec || n < 3) return [];
+  const score = {}, fav = {}; let totW = 0, near = 0;
+  for (let j = 0; j < n; j++) {
+    const v = taste.vecs[j]; let dot = 0; for (let i = 0; i < v.length; i++) dot += v[i] * vec[i];
+    const k = Math.exp((dot - 1) / 0.15), w = taste.picks[j].w, s = taste.picks[j].s;
+    score[s] = (score[s] || 0) + w * k; fav[s] = (fav[s] || 0) + w; totW += w; near += k;
+  }
+  const reg = Math.min(1, n / 12);
+  for (const s in fav) score[s] += 0.25 * reg * (fav[s] / totW);
+  return Object.keys(score).map(id => ({ id, score: score[id] })).sort((a, b) => b.score - a.score).filter(r => r.score >= 0.3 && DATA.byId[r.id]).slice(0, 4);
+}
+function describeFindings(p) {
+  const an = p.an, ml = p.ml, lines = [];
+  if (ml) lines.push(["Subject (neural network)", ml.top.slice(0, 3).map(t => `${t.label} ${Math.round(t.p * 100)}%`).join(", ")]);
+  else lines.push(["Subject", "network unavailable, using measurements only"]);
+  const kindWhy = { portrait: an.faces && an.faces.length ? `${an.faces.length} face${an.faces.length > 1 ? "s" : ""} found` : "people recognised", landscape: "natural scenery recognised", architecture: "building recognised", interior: "indoor scene recognised", food: "food recognised", animal: "animal recognised", night: "very low light measured", street: "street or general scene" };
+  lines.push(["Scene", `${p.rec.kind}: ${kindWhy[p.rec.kind] || ""}`]);
+  lines.push(["Light", `median brightness ${an.lp[50].toFixed(2)}, ${an.dr.toFixed(1)} stops of range, ${(an.clip * 100).toFixed(1)}% clipped highlights`]);
+  lines.push(["Colour", an.mono ? "monochrome" : `${an.chroma < 0.04 ? "muted" : an.chroma > 0.11 ? "very saturated" : "normal saturation"}${an.cast > 0.2 ? `; neutral tones are off by ${an.wb[0] > 0 ? "+" : ""}${an.wb[0].toFixed(0)} mired` : "; no reliable colour cast"}`]);
+  if (an.sky > 0) lines.push(["Sky", `${Math.round(an.sky * 100)}% of the frame`]);
+  if (an.geo && an.geo.conf > 0.25) lines.push(["Lines", `vertical lines ${Math.abs(an.geo.vkeyN || 0) > 0.03 ? "converge" : "tilt"} (${Math.abs(an.geo.vkeyN || 0) > 0.03 ? Math.round(Math.abs(an.geo.vkeyN) * 100) + "% keystone" : Math.abs(an.geo.rot).toFixed(1) + "°"}), so architecture looks straighten them`]);
+  const n = taste.picks.length; lines.push(["Your taste", n ? `learning from ${n} of your picks` : "nothing learned yet; pick looks and it adapts"]);
+  return lines;
+}
+
 /* ============================================================ app state & image plumbing */
 const DATA = window.__DATA__; DATA.byId = Object.fromEntries(DATA.styles.map(s => [s.id, s]));
 const state = { photos: [], cur: -1, chosen: null, token: 0, autoFrame: true };
@@ -1052,21 +1177,30 @@ async function selectPhoto(i) {
   if (p.chosen && p.cache.has(p.chosen)) { drawCanvas(p.cache.get(p.chosen), DATA.byId[p.chosen].name); } else drawOriginal();
   $("#lookTitle").textContent = "Best for this photo"; $("#lookSub").textContent = "Looking at your photo…";
   await tick();
-  if (!p.an) { p.an = analyze(p.thumb.id); p.rec = recommend(p.an); }
+  if (!p.an) {
+    $("#lookSub").textContent = "Reading your photo with a neural network…";
+    await tick(); p.an = analyze(p.thumb.id); await tick();
+    p.ml = await classifyPhoto(p.thumb.canvas);
+    if (p.ml) { p.vec = embedVec(p.ml.embed); p.key = Array.from(p.vec.slice(0, 8)).map(v => Math.round(v * 1000)).join(","); }
+    p.rec = recommend(p.an, null, p.ml);
+  }
+  if (!taste.ready) await tasteLoad();
+  if (state.photos[state.cur] !== p) return;
+  renderFound(p);
   buildKinds(p); buildLooks(p); renderLooks(p);
 }
-const KIND_LABEL = { auto: "Auto", portrait: "Portrait", landscape: "Landscape", architecture: "Architecture", night: "Night", street: "Street" };
+const KIND_LABEL = { auto: "Auto", portrait: "Portrait", landscape: "Landscape", architecture: "Architecture", interior: "Interior", food: "Food", animal: "Animal", night: "Night", street: "Street" };
 function buildKinds(p) {
   const box = $("#kinds"); box.innerHTML = "";
   for (const k of Object.keys(KIND_LABEL)) {
     const b = document.createElement("button"); b.textContent = KIND_LABEL[k]; b.className = (p.kindPick || "auto") === k ? "on" : "";
-    b.onclick = () => { p.kindPick = k; p.rec = recommend(p.an, k === "auto" ? null : k); buildKinds(p); buildLooks(p); renderLooks(p); };
+    b.onclick = () => { p.kindPick = k; p.rec = recommend(p.an, k === "auto" ? null : k, p.ml); buildKinds(p); buildLooks(p); renderLooks(p); };
     box.appendChild(b);
   }
 }
 function buildLooks(p) {
   const root = $("#looks"); root.innerHTML = ""; p.tiles = new Map(); state.token++;
-  const kinds = { portrait: "a portrait", landscape: "a landscape", architecture: "architecture", night: "a night scene", street: "a street or general scene" };
+  const kinds = { portrait: "a portrait", landscape: "a landscape", architecture: "architecture", interior: "an interior", food: "food", animal: "an animal", night: "a night scene", street: "a street or general scene" };
   $("#lookSub").textContent = `${p.kindPick && p.kindPick !== "auto" ? "Showing looks for" : "Looks like"} ${kinds[p.rec.kind]}. Tap a look to see it on your photo.`;
   const mk = (title, ids, cls) => {
     if (!ids.length) return;
@@ -1074,6 +1208,8 @@ function buildLooks(p) {
     const g = document.createElement("div"); g.className = "tiles"; root.appendChild(g);
     for (const id of ids) { const t = makeTile(p, DATA.byId[id]); g.appendChild(t); }
   };
+  p.tasteIds = (p.vec ? tasteRank(p.vec) : []).map(r => r.id);
+  if (p.tasteIds.length) mk(`Picked for you · learned from ${taste.picks.length} of your picks`, p.tasteIds);
   mk("Best for this photo", p.rec.list, true);
   const cats = {}; DATA.styles.forEach(s => (cats[s.category] = cats[s.category] || []).push(s.id));
   for (const [c, ids] of Object.entries(cats)) mk(c, ids);
@@ -1091,7 +1227,7 @@ function makeTile(p, s) {
   return b;
 }
 async function renderLooks(p) {
-  const tok = state.token, order = [...p.rec.list, ...DATA.styles.map(s => s.id).filter(id => !p.rec.list.includes(id))];
+  const tok = state.token, head = [...(p.tasteIds || []), ...p.rec.list.filter(id => !(p.tasteIds || []).includes(id))], order = [...head, ...DATA.styles.map(s => s.id).filter(id => !head.includes(id))];
   const proxy = toLab(p.thumb.id), small = shrinkLab(proxy, 190);
   for (const id of order) {
     if (tok !== state.token) return;
@@ -1129,6 +1265,10 @@ async function choose(id) {
   if (state.photos[state.cur] === p && p.chosen === id) drawCanvas(c, DATA.byId[id].name);
   busy(false);
 }
+function renderFound(p) {
+  const el = $("#found"); el.innerHTML = "";
+  for (const [k, v] of describeFindings(p)) { const dt = document.createElement("dt"), dd = document.createElement("dd"); dt.textContent = k; dd.textContent = v; el.append(dt, dd); }
+}
 function updateWhy() {
   const p = state.photos[state.cur], id = state.chosen, el = $("#why");
   if (!p || !id || !p.plans.has(id)) { el.textContent = ""; return; }
@@ -1161,7 +1301,7 @@ async function exportCurrent(kind) {
     const name = `${p.name}_${id}.${png ? "png" : "jpg"}`;
     busy(false);
     let saved = false;
-    try { const dl = await claude.use("downloads"); if (dl) { await dl.save({ filename: name, data: blob }); saved = true; toast("Saved " + c.width + " × " + c.height); } } catch (e) { if (e && e.code === "declined") return; }
+    try { const dl = await claude.use("downloads"); if (dl) { await dl.save({ filename: name, data: blob }); saved = true; toast("Saved " + c.width + " × " + c.height); tasteRecord(p, id, 1); } } catch (e) { if (e && e.code === "declined") return; }
     if (!saved) showSheet(blob, name);
   } catch (e) { busy(false); toast("Could not save that one. Try a smaller photo."); }
 }
@@ -1205,5 +1345,6 @@ $("#search").addEventListener("input", e => {
     g.hidden = hide; head.hidden = hide;
   });
 });
-window.__darkroom = { estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
+tasteLoad(); visionInit();
+window.__darkroom = { tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
 </script>
