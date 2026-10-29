@@ -89,7 +89,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 .found dl{margin:0 0 12px;display:grid;grid-template-columns:minmax(92px,auto) 1fr;gap:6px 12px;font-size:13px}
 .found dt{color:var(--mute);font:500 11px var(--mono);letter-spacing:.05em;text-transform:uppercase;padding-top:2px}
 .found dd{margin:0;min-width:0;overflow-wrap:anywhere}
-.why{font:400 11px/1.45 var(--mono);color:var(--mute);margin:6px 0 0;min-height:1.45em;letter-spacing:.01em;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.why{font:400 11px/1.45 var(--mono);color:var(--mute);margin:6px 0 0;min-height:1.45em;letter-spacing:.01em;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .switch{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--mute);margin:0 0 12px;min-height:34px}
 .switch input{width:20px;height:20px;accent-color:var(--accent)}
 .sheet{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(14px + env(safe-area-inset-bottom,0px))}
@@ -955,6 +955,7 @@ function solveTone(proxy, r, targets, an) {
     st = tonalStats(proxy, r);
   }
   if (r.tone.highlights !== hl0) notes.push(`Highlights ${Math.round(r.tone.highlights)} to protect bright areas`);
+  { const wh0 = r.tone.whites; for (let i = 0; i < 4; i++) { if (st.p995 >= hiT - 0.05 || st.clip > maxClip * 0.5 || r.tone.whites - wh0 >= 60) break; r.tone.whites += 15; st = tonalStats(proxy, r); } if (r.tone.whites !== wh0) notes.push("White point opened so highlights are clean and bright"); }
   const loT = targets.black == null ? 0.06 : targets.black, sh0 = r.tone.shadows, cap = sh0 + (an.raw ? 60 : 35);
   if (targets.lift_shadows !== false) {
     for (let i = 0; i < 6; i++) { if (st.p10 >= loT * 2.2 || r.tone.shadows >= cap) break; r.tone.shadows += 12; st = tonalStats(proxy, r); }
@@ -966,6 +967,35 @@ function solveTone(proxy, r, targets, an) {
   }
   return notes;
 }
+
+/** What a retoucher does around the subject for each look: lift it, hold the background back, clean skin, brighten eyes. */
+function retouchFor(st, an) {
+  const seg = an.seg; if (!seg) return null;
+  const cat = st.category, id = st.id, bw = st.bw, person = seg.personCoverage > 0.04 || (an.faces && an.faces.length > 0);
+  const usable = seg.coverage > 0.04 && seg.coverage < 0.8;
+  let rt = { subject_ev: 0.14, bg_ev: -0.22, bg_sat: bw ? 0 : -0.12, bg_clarity: -0.12, subject_clarity: 0.16, skin_smooth: 0, eye_pop: 0 };
+  if (person) Object.assign(rt, { subject_ev: 0.2, bg_ev: -0.3, subject_clarity: 0.08, skin_smooth: 0.3, eye_pop: 0.5 });
+  if (cat === "Portrait") Object.assign(rt, { skin_smooth: 0.4, eye_pop: 0.7, bg_ev: -0.35 });
+  if (id === "portrait_airy") Object.assign(rt, { subject_ev: 0.15, bg_ev: -0.08, bg_sat: -0.2, skin_smooth: 0.45 });
+  if (id === "portrait_moody" || id === "ph_leibovitz") Object.assign(rt, { subject_ev: 0.3, bg_ev: -0.55, bg_sat: -0.2 });
+  if (id === "ph_lindbergh" || id === "ph_hcb" || id === "ph_maier" || id === "ph_frank") Object.assign(rt, { skin_smooth: 0, eye_pop: person ? 0.3 : 0, subject_ev: 0.1, bg_ev: -0.15, subject_clarity: 0.05 });
+  if (id === "ph_moriyama" || id === "street_gritty" || id === "bw_noir" || id === "ph_koudelka") Object.assign(rt, { subject_ev: 0.25, bg_ev: -0.45, subject_clarity: 0.28, skin_smooth: 0 });
+  if (cat === "Architecture" || cat === "Landscape" || id === "ph_adams" || id === "ph_salgado") for (const k of ["subject_ev", "bg_ev", "subject_clarity", "bg_clarity"]) rt[k] *= 0.4;
+  if (id === "ph_sugimoto" || id === "arch_minimal" || id === "bw_high_key") rt = { subject_ev: 0, bg_ev: 0, bg_sat: 0, bg_clarity: 0, subject_clarity: 0, skin_smooth: 0, eye_pop: 0 };
+  if (!usable) { rt.subject_ev = rt.bg_ev = rt.bg_sat = rt.bg_clarity = rt.subject_clarity = 0; }
+  if (!person) { rt.skin_smooth = 0; }
+  if (!(an.faces && an.faces.length)) rt.eye_pop = 0;
+  return rt;
+}
+function retouchNotes(rt, an) {
+  if (!rt) return [];
+  const n = [], f = v => (v > 0 ? "+" : "") + v.toFixed(2);
+  if (rt.subject_ev || rt.bg_ev) n.push(`Subject ${f(rt.subject_ev)} EV, background ${f(rt.bg_ev)} EV${rt.bg_sat ? " and calmer colour" : ""} for separation`);
+  if (rt.skin_smooth > 0) n.push(`Skin smoothed ${Math.round(rt.skin_smooth * 100)}%, texture kept`);
+  if (rt.eye_pop > 0) n.push("Eyes brightened");
+  return n;
+}
+
 function planRecipe(an, style, proxy) {
   const r = clone(style.recipe), ad = style.adapt || {}, notes = [];
   if (!an.raw) { r.presence.dehaze *= 0.6; r.tone.shadows *= 0.6; r.presence.clarity *= 0.85; r.detail.sharpen *= 0.5; }   // 8-bit source: gentler
@@ -984,9 +1014,98 @@ function planRecipe(an, style, proxy) {
   if (!an.skyMask) for (const k in r.local.sky) r.local.sky[k] = 0; else notes.push("Sky found: recovering it separately");
   if (!(an.faces && an.faces.length)) r.local.skin_smooth = 0;
   if (an.night) { r.tone.shadows = Math.min(r.tone.shadows, 15); notes.push("Night scene: keeping the darkness"); }
+  if (an.raw) { r.color.vibrance += 8; r.color.saturation += 5; r.tone.contrast *= 1.05; r.presence.clarity += 6; r.detail.sharpen = Math.max(r.detail.sharpen, 0.9); notes.push("RAW develop: contrast, colour and capture sharpening"); }
+  r.nr = 1;
   notes.push(...solveTone(proxy, r, style.targets || { median: 0.52 }, an));
+  r.retouch = retouchFor(style, an); notes.push(...retouchNotes(r.retouch, an));
   r.frame = framePrefs(style);
   return { r, notes };
+}
+
+
+/* ============================================================ noise reduction (self-calibrating pyramid coring) */
+function estimateNoise(L, w, h) {
+  const blk = 24, bw = Math.floor((w - 2) / blk), bh = Math.floor((h - 2) / blk); if (bw < 2 || bh < 2) return 0;
+  const tiles = new Float32Array(bw * bh);
+  for (let ty = 0; ty < bh; ty++) for (let tx = 0; tx < bw; tx++) {
+    let s = 0;
+    for (let y = 0; y < blk; y++) for (let x = 0; x < blk; x++) {
+      const i = (1 + ty * blk + y) * w + 1 + tx * blk + x;
+      s += Math.abs(4 * L[i] - 2 * (L[i - 1] + L[i + 1] + L[i - w] + L[i + w]) + L[i - w - 1] + L[i - w + 1] + L[i + w - 1] + L[i + w + 1]);
+    }
+    tiles[ty * bw + tx] = s / (blk * blk);
+  }
+  const sorted = Array.from(tiles).sort((a, b) => a - b);
+  return Math.sqrt(Math.PI / 2) * sorted[Math.floor(sorted.length * 0.2)] / 6;
+}
+function halve(src, w, h) {
+  const nw = Math.max(1, w >> 1), nh = Math.max(1, h >> 1), o = new Float32Array(nw * nh);
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) { const i = (y * 2) * w + x * 2; o[y * nw + x] = (src[i] + src[Math.min(i + 1, src.length - 1)] + src[Math.min(i + w, src.length - 1)] + src[Math.min(i + w + 1, src.length - 1)]) / 4; }
+  return { d: o, w: nw, h: nh };
+}
+function tileSigma(c, w, h) {
+  const t = 16, tw = Math.floor(w / t), th = Math.floor(h / t); if (tw < 1 || th < 1) { let s = 0; for (let i = 0; i < c.length; i++) s += Math.abs(c[i]); return s / c.length / 0.798; }
+  const v = new Float32Array(tw * th);
+  for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) { let s = 0; for (let y = 0; y < t; y++) for (let x = 0; x < t; x++) s += Math.abs(c[(ty * t + y) * w + tx * t + x]); v[ty * tw + tx] = s / (t * t); }
+  const a = Array.from(v).sort((p, q) => p - q); return a[Math.floor(a.length * 0.25)] / 0.798;
+}
+/** Wiener-style shrinkage of each Laplacian band, thresholds measured from the image's own flat areas. */
+function pyrCoring(ch, w, h, amount, gains, levels) {
+  const gp = [{ d: ch, w, h }];
+  for (let l = 0; l < levels && Math.min(gp[gp.length - 1].w, gp[gp.length - 1].h) >= 32; l++) gp.push(halve(gp[gp.length - 1].d, gp[gp.length - 1].w, gp[gp.length - 1].h));
+  const bands = [];
+  for (let l = 0; l < gp.length - 1; l++) { const up = upBilinear(gp[l + 1].d, gp[l + 1].w, gp[l + 1].h, gp[l].w, gp[l].h), b = new Float32Array(gp[l].d.length); for (let i = 0; i < b.length; i++) b[i] = gp[l].d[i] - up[i]; bands.push(b); }
+  let out = gp[gp.length - 1].d;
+  for (let l = bands.length - 1; l >= 0; l--) {
+    const b = bands[l], sg = tileSigma(b, gp[l].w, gp[l].h), t = amount * gains[Math.min(l, gains.length - 1)] * sg * 2, t2 = t * t;
+    if (t > 1e-7) for (let i = 0; i < b.length; i++) { const q = b[i] * b[i]; b[i] *= q / (q + t2); }
+    const up = upBilinear(out, gp[l + 1] ? gp[l + 1].w : gp[l].w, gp[l + 1] ? gp[l + 1].h : gp[l].h, gp[l].w, gp[l].h), o = new Float32Array(b.length);
+    for (let i = 0; i < o.length; i++) o[i] = up[i] + b[i]; out = o;
+  }
+  return out;
+}
+function opDenoise(img, luma, chroma) {
+  if (luma <= 0 && chroma <= 0) return;
+  const { w, h } = img;
+  if (luma > 0) img.L = pyrCoring(img.L, w, h, luma, [1.0, 0.9, 0.65, 0.4, 0.25], 5);
+  if (chroma > 0) for (const c of ["a", "b"]) {
+    const cc = pyrCoring(img[c], w, h, chroma, [2.2, 2.0, 1.6, 1.2, 0.9], 6), sm = guided(img.L, cc, w, h, 0.006, Math.pow(0.03 * (0.4 + chroma), 2));
+    for (let i = 0; i < cc.length; i++) cc[i] = cc[i] * (1 - 0.7 * chroma) + sm[i] * 0.7 * chroma; img[c] = cc;
+  }
+}
+
+/* ============================================================ retouching with masks (subject / background / skin / eyes) */
+function opRetouch(img, rt, M, an, long) {
+  const { w, h, L } = img, n = w * h, notes = [];
+  if (M.subject) {
+    const mS = M.subject;
+    if (rt.subject_ev) gainMask(img, rt.subject_ev, i => mS[i]);
+    if (rt.bg_ev) gainMask(img, rt.bg_ev, i => 1 - mS[i]);
+    if (rt.bg_sat) for (let i = 0; i < n; i++) { const k = 1 + rt.bg_sat * (1 - mS[i]); img.a[i] *= k; img.b[i] *= k; }
+    if (rt.subject_clarity || rt.bg_clarity) {
+      const base = guided(img.L, img.L, w, h, 0.012, 0.0049), base2 = guided(img.L, img.L, w, h, 0.05, 0.01);
+      for (let i = 0; i < n; i++) {
+        const k = rt.subject_clarity * mS[i] + rt.bg_clarity * (1 - mS[i]), l = img.L[i];
+        img.L[i] = l + 1.1 * k * (l - base[i]) + 0.7 * rt.subject_clarity * mS[i] * (base[i] - base2[i]);   // clarity + broad "contour" shaping
+      }
+    }
+  }
+  if (rt.skin_smooth > 0 && M.person) {
+    const mP = M.person, m = new Float32Array(n);
+    for (let i = 0; i < n; i++) { if (mP[i] < 0.3) continue; const C = Math.hypot(img.a[i], img.b[i]); let hd = Math.atan2(img.b[i], img.a[i]) / deg; if (hd < 0) hd += 360; m[i] = mP[i] * skinWeight(hd, C, img.L[i]); }
+    const mm = gauss(m, w, h, Math.max(1, long / 700)), low = guided(img.L, img.L, w, h, 0.004, 0.000625), a0 = img.a.slice(), b0 = img.b.slice();
+    const sa = guided(img.L, a0, w, h, 0.01, 0.0009), sb = guided(img.L, b0, w, h, 0.01, 0.0009);
+    for (let i = 0; i < n; i++) { const k = mm[i] * rt.skin_smooth; if (k < 0.01) continue; img.L[i] += (low[i] - img.L[i]) * k * 0.55; img.a[i] += (sa[i] - a0[i]) * k * 0.8; img.b[i] += (sb[i] - b0[i]) * k * 0.8; }
+  }
+  if (rt.eye_pop > 0 && an.faces && an.faces.length) {
+    for (const f of an.faces) {
+      const r = f[2] * w * 0.11, ey = (f[1] + f[3] * 0.40) * h;
+      for (const ex of [(f[0] + f[2] * 0.30) * w, (f[0] + f[2] * 0.70) * w]) {
+        const x0 = Math.max(0, Math.floor(ex - 3 * r)), x1 = Math.min(w - 1, Math.ceil(ex + 3 * r)), y0 = Math.max(0, Math.floor(ey - 3 * r)), y1 = Math.min(h - 1, Math.ceil(ey + 3 * r));
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * w + x, g = Math.exp(-((x - ex) ** 2 + (y - ey) ** 2) / (r * r)); img.L[i] += rt.eye_pop * 0.05 * g * smooth(0.15, 0.5, img.L[i]); }
+      }
+    }
+  }
 }
 
 /* ============================================================ render a recipe on an ImageData */
@@ -1006,6 +1125,8 @@ function develop(id, r, an, fullLong) {
     if (crop) { lab = cropLab(lab, crop); note = crop.note; }
   }
   const long = Math.max(lab.w, lab.h);
+  if (r.nr) { const sg = estimateNoise(lab.L, lab.w, lab.h), k = r.nr * (an.raw ? 1 : 0.5); opDenoise(lab, clamp((sg - 0.0035) / 0.018, 0, 1) * 0.95 * k, clamp((sg - 0.0015) / 0.010, 0, 1) * 0.95 * k + (an.raw ? 0.25 : 0.08)); }
+  const an0 = an;
   an = crop ? Object.assign({}, an, { faces: (an.faces || []).map(f => [(f[0] - crop.x) / crop.w, (f[1] - crop.y) / crop.h, f[2] / crop.w, f[3] / crop.h]), skyMask: an.skyMask ? cropSmall(an.skyMask.d, an.skyMask.w, an.skyMask.h, crop) : null }) : an;
   let skyMask = null;
   if (an.skyMask) { skyMask = upBilinear(an.skyMask.d, an.skyMask.w, an.skyMask.h, lab.w, lab.h); skyMask = guided(lab.L, skyMask, lab.w, lab.h, 0.006, 0.0001); for (let i = 0; i < skyMask.length; i++) skyMask[i] = clamp(skyMask[i], 0, 1); }
@@ -1013,6 +1134,10 @@ function develop(id, r, an, fullLong) {
   opExposure(lab, ev); opFilmic(lab, r.tone, ev); opLocalTone(lab, r.tone);
   opPresence(lab, r.presence, long);
   opColor(lab, r.color);
+  if (r.retouch && an0.seg) {
+    const M = { subject: refineMask({ d: an0.seg.subject, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop), person: r.retouch.skin_smooth > 0 ? refineMask({ d: an0.seg.person, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop) : null };
+    opRetouch(lab, r.retouch, M, an, long);
+  }
   opLocal(lab, r.local, an, skyMask);
   opGrade(lab, r.color.grade); opBW(lab, r.color.bw); opCurveFade(lab, r.tone); opDesatExtremes(lab, r.tone);
   opEffects(lab, r.effects, long, 7);
@@ -1029,25 +1154,30 @@ function renderToCanvas(canvas, lab, dither) {
 
 /* ============================================================ machine learning */
 /* 1. Vision: Google's EfficientNet-Lite0 (trained on 1.2 M photos, 1000 classes) running in a Web Worker. */
-let _vw = null, _vready = null, _vid = 0; const _vp = new Map(); let _vmain = null;
-function visionInit() {
-  if (_vready) return _vready;
-  _vready = new Promise(res => {
+const _vw = {}; let _vid = 0; const _vp = new Map();
+const MODELS = () => ({ cls: window.__VISION__, seg: window.__SEG__ });
+function visionInit(name) {
+  if (_vw[name]) return _vw[name].ready;
+  const w = { ready: null, worker: null, main: null };
+  _vw[name] = w;
+  w.ready = new Promise(res => {
+    const src = document.getElementById("visionSrc").textContent;
     try {
-      const src = document.getElementById("visionSrc").textContent, url = URL.createObjectURL(new Blob([src], { type: "text/javascript" })), w = new Worker(url);
-      w.onmessage = e => { const m = e.data; if (m.type === "ready") res(true); else { const h = _vp.get(m.id); if (h) { _vp.delete(m.id); m.type === "result" ? h.ok(m) : h.no(new Error(m.message)); } } };
-      w.onerror = () => res(false);
-      w.postMessage({ type: "init", model: window.__VISION__ }); _vw = w;
+      const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" })), worker = new Worker(url);
+      worker.onmessage = e => { const m = e.data; if (m.type === "ready") res(true); else { const h = _vp.get(m.id); if (h) { _vp.delete(m.id); m.type === "result" ? h.ok(m) : h.no(new Error(m.message)); } } };
+      worker.onerror = () => res(false);
+      worker.postMessage({ type: "init", models: { [name]: MODELS()[name] } }); w.worker = worker;
     } catch (e) {
-      try { _vmain = new Function(document.getElementById("visionSrc").textContent + ";return VISION;")(); _vmain.load(JSON.parse(JSON.stringify(window.__VISION__))); res(true); } catch (e2) { res(false); }
+      try { w.main = new Function(src + ";return VISION;")(); w.main.load(name, JSON.parse(JSON.stringify(MODELS()[name]))); res(true); } catch (e2) { res(false); }
     }
   });
-  return _vready;
+  return w.ready;
 }
-async function visionRun(pixels) {
-  if (!(await visionInit())) return null;
-  if (_vmain) { await tick(); return _vmain.run(pixels); }
-  return new Promise((ok, no) => { const id = ++_vid; _vp.set(id, { ok, no }); _vw.postMessage({ type: "run", id, pixels }, [pixels.buffer]); });
+async function visionRun(name, pixels) {
+  if (!(await visionInit(name))) return null;
+  const w = _vw[name];
+  if (w.main) { await tick(); return w.main.run(name, pixels); }
+  return new Promise((ok, no) => { const id = ++_vid; _vp.set(id, { ok, no }); w.worker.postMessage({ type: "run", id, name, pixels }, [pixels.buffer]); });
 }
 function toTensor(canvas) {
   const c = document.createElement("canvas"); c.width = c.height = 224; const x = c.getContext("2d", { willReadFrequently: true });
@@ -1058,11 +1188,43 @@ function toTensor(canvas) {
 }
 async function classifyPhoto(canvas) {
   try {
-    const r = await visionRun(toTensor(canvas)); if (!r) return null;
+    const r = await visionRun("cls", toTensor(canvas)); if (!r) return null;
     const probs = r.probs, labels = window.__VISION__.labels, order = Array.from(probs.keys()).sort((a, b) => probs[b] - probs[a]).slice(0, 5);
     const g = {}; for (const k in window.__GROUPS__) { let s = 0; for (const i of window.__GROUPS__[k]) s += probs[i]; g[k] = s; }
     return { top: order.map(i => ({ label: labels[i], p: probs[i] })), g, embed: r.embed };
   } catch (e) { return null; }
+}
+
+
+/* 3. Segmentation: DeepLab-v3 (Pascal VOC, 21 classes) finds the subject so edits can treat subject and background differently. */
+const VOC = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "dining table", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv"];
+async function segmentPhoto(canvas) {
+  try {
+    const c = document.createElement("canvas"); c.width = c.height = 257; const x = c.getContext("2d", { willReadFrequently: true });
+    x.imageSmoothingQuality = "high"; x.drawImage(canvas, 0, 0, 257, 257);
+    const d = x.getImageData(0, 0, 257, 257).data, t = new Float32Array(257 * 257 * 3);
+    for (let i = 0, j = 0; i < d.length; i += 4) { t[j++] = (d[i] - 127.5) / 127.5; t[j++] = (d[i + 1] - 127.5) / 127.5; t[j++] = (d[i + 2] - 127.5) / 127.5; }
+    const r = await visionRun("seg", t); if (!r) return null;
+    const lg = r.probs, n = 257 * 257, subject = new Float32Array(n), person = new Float32Array(n), area = new Float32Array(21);
+    for (let i = 0; i < n; i++) {
+      let mx = -1e9; for (let k = 0; k < 21; k++) mx = Math.max(mx, lg[i * 21 + k]);
+      let sum = 0, e0 = 0, e15 = 0, best = 0, bv = -1e9;
+      for (let k = 0; k < 21; k++) { const e = Math.exp(lg[i * 21 + k] - mx); sum += e; if (k === 0) e0 = e; if (k === 15) e15 = e; if (lg[i * 21 + k] > bv) { bv = lg[i * 21 + k]; best = k; } }
+      subject[i] = 1 - e0 / sum; person[i] = e15 / sum; area[best]++;
+    }
+    let cov = 0, pc = 0; for (let i = 0; i < n; i++) { cov += subject[i]; pc += person[i]; }
+    const classes = Array.from(area.keys()).filter(k => k && area[k] / n > 0.02).sort((a, b) => area[b] - area[a]).map(k => ({ name: VOC[k], frac: area[k] / n }));
+    return { w: 257, h: 257, subject, person, coverage: cov / n, personCoverage: pc / n, classes };
+  } catch (e) { return null; }
+}
+/** Soft mask at the working resolution: upsample the 257x257 map, snap its edge to the photo's own edges. */
+function refineMask(map, w, h, guideL, crop) {
+  let m = map.d || map, mw = map.w || 257, mh = map.h || 257;
+  if (crop) { const c = cropSmall(m, mw, mh, crop); m = c.d; mw = c.w; mh = c.h; }
+  let up = upBilinear(m, mw, mh, w, h);
+  up = guided(guideL, up, w, h, 0.008, 0.0004);
+  for (let i = 0; i < up.length; i++) up[i] = smooth(0.12, 0.88, clamp(up[i], 0, 1));
+  return up;
 }
 
 /* 2. Taste: a nearest-neighbour model trained on YOUR picks. Each pick stores the photo's learned
@@ -1122,6 +1284,7 @@ function tasteRank(vec) {
 function describeFindings(p) {
   const an = p.an, ml = p.ml, lines = [];
   if (p.rawMeta) lines.push(["File", `${p.rawMeta.kind}, ${p.rawMeta.source[0]}×${p.rawMeta.source[1]}${p.rawMeta.compressed ? ", lossless-compressed" : ""}; RAW detail is kept for highlights and shadows`]);
+  if (an.seg && an.seg.classes.length) lines.push(["Subject mask", an.seg.classes.slice(0, 3).map(c => `${c.name} ${Math.round(c.frac * 100)}% of frame`).join(", ") + (an.seg.coverage > 0.04 && an.seg.coverage < 0.8 ? "; used to separate subject from background" : "; too large or small to separate")]);
   if (ml) lines.push(["Subject (neural network)", ml.top.slice(0, 3).map(t => `${t.label} ${Math.round(t.p * 100)}%`).join(", ")]);
   else lines.push(["Subject", "network unavailable, using measurements only"]);
   const kindWhy = { portrait: an.faces && an.faces.length ? `${an.faces.length} face${an.faces.length > 1 ? "s" : ""} found` : "people recognised", landscape: "natural scenery recognised", architecture: "building recognised", interior: "indoor scene recognised", food: "food recognised", animal: "animal recognised", night: "very low light measured", street: "street or general scene" };
@@ -1242,7 +1405,7 @@ async function selectPhoto(i) {
   if (!p.an) {
     $("#lookSub").textContent = "Reading your photo with a neural network…";
     await tick(); p.an = analyze(p.thumb.id); await tick();
-    p.ml = await classifyPhoto(p.thumb.canvas);
+    const [ml, seg] = await Promise.all([classifyPhoto(p.thumb.canvas), segmentPhoto(p.thumb.canvas)]); p.ml = ml; p.an.seg = seg;
     if (p.ml) { p.vec = embedVec(p.ml.embed); p.key = Array.from(p.vec.slice(0, 8)).map(v => Math.round(v * 1000)).join(","); }
     p.rec = recommend(p.an, null, p.ml);
   }
@@ -1334,7 +1497,7 @@ function renderFound(p) {
 function updateWhy() {
   const p = state.photos[state.cur], id = state.chosen, el = $("#why");
   if (!p || !id || !p.plans.has(id)) { el.textContent = ""; return; }
-  const parts = p.plans.get(id).notes.slice(0, 3).concat(p.fnotes && p.fnotes[id] ? [p.fnotes[id]] : []);
+  const nn = p.plans.get(id).notes, rt = nn.filter(t => /^(Subject|Skin|Eyes)/.test(t)), other = nn.filter(t => !/^(Subject|Skin|Eyes)/.test(t)), parts = rt.concat(other).slice(0, 5).concat(p.fnotes && p.fnotes[id] ? [p.fnotes[id]] : []);
   el.textContent = parts.join(" · ");
 }
 function updateSave() {
@@ -1407,6 +1570,6 @@ $("#search").addEventListener("input", e => {
     g.hidden = hide; head.hidden = hide;
   });
 });
-tasteLoad(); visionInit();
-window.__darkroom = { tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
+tasteLoad(); visionInit("cls"); visionInit("seg");
+window.__darkroom = { estimateNoise, segmentPhoto, DATA, toLab, shrinkLab, renderToCanvas, tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
 </script>

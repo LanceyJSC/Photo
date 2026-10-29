@@ -14,10 +14,12 @@ from vision_groups import groups  # noqa: E402
 
 tpl = (ROOT / "browser" / "darkroom.template.html").read_text()
 vision = json.loads((ROOT / "browser" / "vision_model.json").read_text())
+seg = json.loads((ROOT / "browser" / "seg_model.json").read_text())
 data = ("window.__DATA__=" + json.dumps(export(), separators=(",", ":")) + ";\n"
         "window.__FACE__=" + json.dumps(export_face(), separators=(",", ":")) + ";\n"
         "window.__GROUPS__=" + json.dumps(groups(vision["labels"]), separators=(",", ":")) + ";\n"
-        "window.__VISION__=" + json.dumps(vision, separators=(",", ":")) + ";")
+        "window.__VISION__=" + json.dumps(vision, separators=(",", ":")) + ";\n"
+        "window.__SEG__=" + json.dumps(seg, separators=(",", ":")) + ";")
 fragment = tpl.replace("/*__DATA__*/", data).replace("/*__ENGINE__*/", (ROOT / "browser" / "vision_engine.js").read_text()).replace("/*__DNG__*/", (ROOT / "browser" / "dng_decoder.js").read_text())
 out_frag = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "browser" / "darkroom.fragment.html"
 out_frag.write_text(fragment)

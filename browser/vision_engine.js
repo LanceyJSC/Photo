@@ -2,10 +2,10 @@
    Executes the graph exported by scripts/export_vision_model.py: conv, depthwise conv, add,
    global average pool, fully connected, softmax. NHWC float32, TFLite SAME/VALID padding rules. */
 var VISION = (function () {
-  var M = null, T = null;
+  var models = {};
   function b64ToBytes(b64) { var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
   function prod(a) { var p = 1; for (var i = 0; i < a.length; i++) p *= a[i]; return p; }
-  function load(model) {
+  function load(name, model) {
     var bytes = b64ToBytes(model.weights), buf = bytes.buffer;
     function f32(off, n) { return new Float32Array(buf.slice(off, off + 4 * n)); }
     model.ops.forEach(function (op) {
@@ -19,14 +19,14 @@ var VISION = (function () {
         op.wf = w;
       }
     });
-    model.weights = null; M = model;
+    model.weights = null; models[name] = model;
   }
   function act(v, a) { return a === 1 ? (v < 0 ? 0 : v) : a === 3 ? (v < 0 ? 0 : v > 6 ? 6 : v) : v; }
   function dims(shape, op, kh, kw) {
-    var H = shape[1], W = shape[2], oh, ow, pt = 0, pl = 0;
-    if (op.pad === "same") { oh = Math.ceil(H / op.sh); ow = Math.ceil(W / op.sw); pt = Math.max(0, ((oh - 1) * op.sh + kh - H)) >> 1; pl = Math.max(0, ((ow - 1) * op.sw + kw - W)) >> 1; }
-    else { oh = Math.floor((H - kh) / op.sh) + 1; ow = Math.floor((W - kw) / op.sw) + 1; }
-    return { H: H, W: W, oh: oh, ow: ow, pt: pt, pl: pl };
+    var H = shape[1], W = shape[2], oh, ow, pt = 0, pl = 0, dh = op.dh || 1, dw = op.dw_ || 1, eh = (kh - 1) * dh + 1, ew = (kw - 1) * dw + 1;
+    if (op.pad === "same") { oh = Math.ceil(H / op.sh); ow = Math.ceil(W / op.sw); pt = Math.max(0, ((oh - 1) * op.sh + eh - H)) >> 1; pl = Math.max(0, ((ow - 1) * op.sw + ew - W)) >> 1; }
+    else { oh = Math.floor((H - eh) / op.sh) + 1; ow = Math.floor((W - ew) / op.sw) + 1; }
+    return { H: H, W: W, oh: oh, ow: ow, pt: pt, pl: pl, dh: dh, dw: dw };
   }
   function conv(op, x, inShape) {
     var O = op.w.shape[0], kh = op.w.shape[1], kw = op.w.shape[2], I = op.w.shape[3], d = dims(inShape, op, kh, kw), out = new Float32Array(d.oh * d.ow * O), w = op.wf, b = op.bias;
@@ -35,9 +35,9 @@ var VISION = (function () {
       for (var o = 0; o < O; o++) {
         var acc = b[o];
         for (var ky = 0; ky < kh; ky++) {
-          var iy = oy * op.sh - d.pt + ky; if (iy < 0 || iy >= d.H) continue;
+          var iy = oy * op.sh - d.pt + ky * d.dh; if (iy < 0 || iy >= d.H) continue;
           for (var kx = 0; kx < kw; kx++) {
-            var ix = ox * op.sw - d.pl + kx; if (ix < 0 || ix >= d.W) continue;
+            var ix = ox * op.sw - d.pl + kx * d.dw; if (ix < 0 || ix >= d.W) continue;
             var ib = (iy * d.W + ix) * I, wb = ((o * kh + ky) * kw + kx) * I;
             for (var i = 0; i < I; i++) acc += x[ib + i] * w[wb + i];
           }
@@ -53,9 +53,9 @@ var VISION = (function () {
       var ob = (oy * d.ow + ox) * C, c;
       for (c = 0; c < C; c++) out[ob + c] = b[c];
       for (var ky = 0; ky < kh; ky++) {
-        var iy = oy * op.sh - d.pt + ky; if (iy < 0 || iy >= d.H) continue;
+        var iy = oy * op.sh - d.pt + ky * d.dh; if (iy < 0 || iy >= d.H) continue;
         for (var kx = 0; kx < kw; kx++) {
-          var ix = ox * op.sw - d.pl + kx; if (ix < 0 || ix >= d.W) continue;
+          var ix = ox * op.sw - d.pl + kx * d.dw; if (ix < 0 || ix >= d.W) continue;
           var ib = (iy * d.W + ix) * C, wb = (ky * kw + kx) * C;
           for (c = 0; c < C; c++) out[ob + c] += x[ib + c] * w[wb + c];
         }
@@ -65,8 +65,8 @@ var VISION = (function () {
     return out;
   }
   /** pixels: Float32Array(224*224*3) already normalised ((v-127)/128) */
-  function run(pixels) {
-    var t = {}; t[M.input.idx] = pixels;
+  function run(name, pixels) {
+    var M = models[name], t = {}; t[M.input.idx] = pixels;
     var shapes = {}; shapes[M.input.idx] = M.input.shape;
     for (var k = 0; k < M.ops.length; k++) {
       var op = M.ops[k], x = t[op.in], s = shapes[op.in], out;
@@ -75,6 +75,23 @@ var VISION = (function () {
       else if (op.t === "add") { var y = t[op.in2]; out = new Float32Array(x.length); for (var i = 0; i < x.length; i++) out[i] = act(x[i] + y[i], op.act); }
       else if (op.t === "avg") { var H = s[1], W = s[2], C = s[3]; out = new Float32Array(C); for (var p = 0; p < H * W; p++) for (var c = 0; c < C; c++) out[c] += x[p * C + c]; for (var c2 = 0; c2 < C; c2++) out[c2] /= H * W; }
       else if (op.t === "reshape") out = x;
+      else if (op.t === "concat") {
+        var parts = op.ins.map(function (i) { return t[i]; }), shp = op.ins.map(function (i) { return shapes[i]; }), P = shp[0][1] * shp[0][2], Ct = 0, q4;
+        shp.forEach(function (sh) { Ct += sh[3]; }); out = new Float32Array(P * Ct);
+        for (var pp = 0; pp < P; pp++) { var off = 0; for (q4 = 0; q4 < parts.length; q4++) { var Ck = shp[q4][3]; for (var cc = 0; cc < Ck; cc++) out[pp * Ct + off + cc] = parts[q4][pp * Ck + cc]; off += Ck; } }
+      }
+      else if (op.t === "resize") {
+        var ih = s[1], iw = s[2], C2 = s[3], oh2 = op.shape[1], ow2 = op.shape[2]; out = new Float32Array(oh2 * ow2 * C2);
+        for (var yy = 0; yy < oh2; yy++) {
+          var sy = op.align ? (oh2 > 1 ? yy * (ih - 1) / (oh2 - 1) : 0) : op.half ? (yy + 0.5) * ih / oh2 - 0.5 : yy * ih / oh2; sy = sy < 0 ? 0 : sy > ih - 1 ? ih - 1 : sy;
+          var y0 = Math.floor(sy), y1 = Math.min(y0 + 1, ih - 1), fy = sy - y0;
+          for (var xx = 0; xx < ow2; xx++) {
+            var sx = op.align ? (ow2 > 1 ? xx * (iw - 1) / (ow2 - 1) : 0) : op.half ? (xx + 0.5) * iw / ow2 - 0.5 : xx * iw / ow2; sx = sx < 0 ? 0 : sx > iw - 1 ? iw - 1 : sx;
+            var x0 = Math.floor(sx), x1 = Math.min(x0 + 1, iw - 1), fx = sx - x0, ob2 = (yy * ow2 + xx) * C2, a00 = (y0 * iw + x0) * C2, a01 = (y0 * iw + x1) * C2, a10 = (y1 * iw + x0) * C2, a11 = (y1 * iw + x1) * C2;
+            for (var ch = 0; ch < C2; ch++) out[ob2 + ch] = (x[a00 + ch] * (1 - fx) + x[a01 + ch] * fx) * (1 - fy) + (x[a10 + ch] * (1 - fx) + x[a11 + ch] * fx) * fy;
+          }
+        }
+      }
       else if (op.t === "fc") { var O = op.w.shape[0], I = op.w.shape[1]; out = new Float32Array(O); for (var o = 0; o < O; o++) { var acc = op.bias[o]; for (var j = 0; j < I; j++) acc += x[j] * op.wf[o * I + j]; out[o] = acc; } }
       else if (op.t === "softmax") { var mx = -1e30, sum = 0; out = new Float32Array(x.length); for (var q = 0; q < x.length; q++) mx = Math.max(mx, x[q]); for (var q2 = 0; q2 < x.length; q2++) { out[q2] = Math.exp(x[q2] - mx); sum += out[q2]; } for (var q3 = 0; q3 < x.length; q3++) out[q3] /= sum; }
       t[op.out] = out; shapes[op.out] = op.shape;
@@ -87,8 +104,8 @@ if (typeof self !== "undefined" && typeof window === "undefined") {   // inside 
   self.onmessage = function (e) {
     var m = e.data;
     try {
-      if (m.type === "init") { VISION.load(m.model); self.postMessage({ type: "ready" }); }
-      else if (m.type === "run") { var r = VISION.run(m.pixels); self.postMessage({ type: "result", id: m.id, probs: r.probs, embed: r.embed }, [r.probs.buffer, r.embed.buffer]); }
+      if (m.type === "init") { for (var k in m.models) VISION.load(k, m.models[k]); self.postMessage({ type: "ready" }); }
+      else if (m.type === "run") { var r = VISION.run(m.name, m.pixels), tr = [r.probs.buffer]; if (r.embed) tr.push(r.embed.buffer); self.postMessage({ type: "result", id: m.id, probs: r.probs, embed: r.embed }, tr); }
     } catch (err) { self.postMessage({ type: "error", id: m.id, message: String(err) }); }
   };
 }

@@ -13,12 +13,15 @@ import zipfile
 import numpy as np
 import tflite
 
-CONV, DW, ADD, AVG, RESHAPE, FC, SOFTMAX = 3, 4, 0, 1, 22, 9, 25
+CONV, DW, ADD, AVG, RESHAPE, FC, SOFTMAX, CONCAT, RESIZE = 3, 4, 0, 1, 22, 9, 25, 2, 23
 
 
-def export(path: str) -> dict:
+def export(path: str, mean: float = 127.0, std: float = 128.0) -> dict:
     raw = open(path, "rb").read()
-    labels = zipfile.ZipFile(io.BytesIO(raw)).read("labels_without_background.txt").decode().strip().split("\n")
+    try:
+        labels = zipfile.ZipFile(io.BytesIO(raw)).read("labels_without_background.txt").decode().strip().split("\n")
+    except Exception:   # noqa: BLE001 - segmentation models carry no label file
+        labels = []
     m = tflite.Model.GetRootAsModel(raw, 0)
     sg = m.Subgraphs(0)
     blob = io.BytesIO()
@@ -66,9 +69,8 @@ def export(path: str) -> dict:
         if code in (CONV, DW):
             o = tflite.Conv2DOptions() if code == CONV else tflite.DepthwiseConv2DOptions()
             o.Init(opts.Bytes, opts.Pos)
-            assert o.DilationHFactor() == 1 and o.DilationWFactor() == 1
             d.update(t="conv" if code == CONV else "dw", sh=o.StrideH(), sw=o.StrideW(), pad="same" if o.Padding() == 0 else "valid",
-                     act=o.FusedActivationFunction())
+                     act=o.FusedActivationFunction(), dh=o.DilationHFactor(), dw_=o.DilationWFactor())
             d["w"] = put(ins[1], "w" if code == CONV else "dw")
             d["b"] = put(ins[2], "b")
             if code == DW:
@@ -80,6 +82,12 @@ def export(path: str) -> dict:
             o = tflite.Pool2DOptions(); o.Init(opts.Bytes, opts.Pos)
             d.update(t="avg", fh=o.FilterHeight(), fw=o.FilterWidth(), sh=o.StrideH(), sw=o.StrideW(), pad="same" if o.Padding() == 0 else "valid")
             avg_out = outs[0]
+        elif code == CONCAT:
+            o = tflite.ConcatenationOptions(); o.Init(opts.Bytes, opts.Pos)
+            d.update(t="concat", ins=ins, axis=o.Axis(), act=o.FusedActivationFunction())
+        elif code == RESIZE:
+            o = tflite.ResizeBilinearOptions(); o.Init(opts.Bytes, opts.Pos)
+            d.update(t="resize", align=bool(o.AlignCorners()), half=bool(o.HalfPixelCenters()))
         elif code == RESHAPE:
             d.update(t="reshape")
         elif code == FC:
@@ -91,9 +99,9 @@ def export(path: str) -> dict:
         d["shape"] = tensor(outs[0])[1]
         ops.append(d)
     inp = sg.Inputs(0)
-    return {"input": {"idx": inp, "shape": tensor(inp)[1], "mean": 127.0, "std": 128.0}, "output": sg.Outputs(0), "embed": avg_out,
+    return {"input": {"idx": inp, "shape": tensor(inp)[1], "mean": mean, "std": std}, "output": sg.Outputs(0), "embed": avg_out,
             "ops": ops, "labels": labels, "weights": base64.b64encode(blob.getvalue()).decode()}
 
 
 if __name__ == "__main__":
-    json.dump(export(sys.argv[1]), sys.stdout, separators=(",", ":"))
+    json.dump(export(sys.argv[1], *(float(a) for a in sys.argv[2:4])), sys.stdout, separators=(",", ":"))

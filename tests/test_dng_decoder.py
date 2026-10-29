@@ -71,3 +71,18 @@ def test_independent_decoder_agrees_the_fixture_is_valid(tmp_path):
     _, raw = scene()
     p = D.write_dng(tmp_path / "c.dng", raw, linear=True, bits=12, tile=(64, 64), neutral=tuple(N), fm=D.SRGB_TO_XYZ50 @ C, white=4095)
     assert np.array_equal(rawpy.imread(str(p)).raw_image[..., :3], raw)
+
+
+def test_segmentation_network_finds_the_person_in_the_browser_engine(tmp_path):
+    sk = pytest.importorskip("skimage.data")
+    import cv2
+    img = cv2.resize(sk.astronaut(), (257, 257), interpolation=cv2.INTER_AREA).astype(np.float32)
+    (tmp_path / "in.json").write_text(json.dumps((((img - 127.5) / 127.5)).ravel().tolist()))
+    script = f"""
+const fs=require('fs');const V=new Function(fs.readFileSync({json.dumps(str(ROOT / 'browser' / 'vision_engine.js'))},'utf8')+';return VISION;')();
+V.load('seg',JSON.parse(fs.readFileSync({json.dumps(str(ROOT / 'browser' / 'seg_model.json'))},'utf8')));
+const r=V.run('seg',Float32Array.from(JSON.parse(fs.readFileSync({json.dumps(str(tmp_path / 'in.json'))},'utf8'))));
+const c=new Array(21).fill(0);for(let i=0;i<257*257;i++){{let b=0;for(let k=1;k<21;k++)if(r.probs[i*21+k]>r.probs[i*21+b])b=k;c[b]++;}}
+process.stdout.write(JSON.stringify(c));"""
+    counts = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+    assert counts[15] / sum(counts) > 0.3 and counts[15] == max(counts[1:])     # class 15 = person

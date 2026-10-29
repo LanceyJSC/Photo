@@ -59,6 +59,15 @@ Describe a look in words (`"dark moody portrait, warm, grainy"`) and it picks th
 
 `browser/dng_decoder.js` reads DNG files directly in the browser: **Apple ProRAW** (tiled, lossless-JPEG-compressed LinearRaw) and **Bayer RAW DNG** from camera apps. The photo is decoded tile by tile and reduced as it goes (never the full 48 MP in memory), converted to linear light with the file's own colour matrices and white balance, and edited as floating-point data so highlights and shadows keep their RAW latitude. Apple's photo picker converts RAW to JPEG, so the file has to be chosen from Files (Photos, Share, Save to Files). Tests (`tests/test_dng_decoder.py`) use synthetic DNGs in the documented ProRAW layout that LibRaw reads bit-for-bit identically; no real iPhone file was available in the build environment, so expect to report any iPhone-specific quirks.
 
+### Retouching, not filtering (phone version)
+
+Each look is applied through masks, the way a retoucher works:
+* **Subject / background separation:** a second neural network (DeepLab-v3, 21 object classes: person, cat, dog, car...) outlines the subject; the edge is snapped to the photo's real edges. The subject is lifted and sharpened (clarity plus broad dodge-and-burn style contouring) while the background is held back, desaturated and softened.
+* **Skin:** within the person mask, blotchy mid-frequency skin is smoothed (frequency separation) while pores and edges stay; looks documented as "unretouched" (Lindbergh, Cartier-Bresson) leave skin alone.
+* **Eyes:** brightened using the detected face geometry.
+* **Noise:** a self-calibrating luminance and colour noise reduction, strength measured from the photo itself at the size it is rendered, important for lifted RAW shadows.
+* **RAW develop:** extra contrast, colour and capture sharpening for RAW, an automatic white point so highlights are clean, plus the exposure/highlight/shadow solver.
+
 ### Machine learning in the phone version
 
 * **Seeing the photo.** Every photo goes through Google's EfficientNet-Lite0 (an ImageNet network trained on 1.2 M labelled photos, Apache-2.0, from MediaPipe). It runs on the phone in a Web Worker using a small JavaScript inference engine (`browser/vision_engine.js`) with the weights exported by `scripts/export_vision_model.py` as 8-bit. Its answer ("espresso 90%", "Egyptian cat 77%", "obelisk 17%") is mapped to genres (`scripts/vision_groups.py`) to choose which looks to recommend; measurements (light, colour cast, faces, sky, lines) are shown in *What I found in this photo*. The JS engine was checked against the reference TFLite model (same top answer; probabilities within 0.011 because of the 8-bit weights).
