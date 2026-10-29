@@ -72,7 +72,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 .tile .ph{aspect-ratio:4/3;background:linear-gradient(110deg,var(--surface) 30%,var(--surface2) 50%,var(--surface) 70%);background-size:200% 100%;animation:sh 1.5s linear infinite;overflow:hidden}
 .tile.done .ph{animation:none}
 @keyframes sh{to{background-position:-200% 0}}
-.tile canvas{width:100%;height:100%;display:block;object-fit:cover}
+.tile canvas{width:100%;height:100%;display:block;object-fit:contain;background:#000}
 .tile b{font:700 13.5px/1.25 var(--display);padding:7px 10px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .tile small{padding:0 10px;color:var(--mute);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .tile[hidden]{display:none}
@@ -82,7 +82,11 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 .bar .wrap{display:flex;gap:10px}
 .bar .primary{flex:1;min-height:48px;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .bar #hold{flex:none;touch-action:none;user-select:none;-webkit-user-select:none}
+.bar #savePng{flex:none}
 .note{color:var(--mute);font-size:12.5px;margin-top:22px}
+.why{font:400 11px/1.45 var(--mono);color:var(--mute);margin:6px 0 0;min-height:1.45em;letter-spacing:.01em;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.switch{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--mute);margin:0 0 12px;min-height:34px}
+.switch input{width:20px;height:20px;accent-color:var(--accent)}
 .sheet{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(14px + env(safe-area-inset-bottom,0px))}
 .sheet img{flex:1;min-height:0;object-fit:contain;width:100%}
 .sheet p{color:var(--mute);margin:10px 0;text-align:center;font-size:13.5px}
@@ -119,11 +123,13 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
         <div class="busy" id="busy" hidden><div class="spin"></div><span id="busyText">Developing…</span></div>
       </div>
       <div class="strip" id="strip"></div>
+      <p class="why" id="why"></p>
     </div>
 
     <h2 id="lookTitle">Best for this photo</h2>
     <p class="sub" id="lookSub">Looking at your photo…</p>
     <div class="chips" id="kinds" role="group" aria-label="Type of photo"></div>
+    <label class="switch"><input type="checkbox" id="frameToggle" checked> <span>Smart framing: crops to improve composition</span></label>
     <input class="search" id="search" type="search" placeholder="Search looks or photographers" autocomplete="off" enterkeyhint="search">
     <div id="looks"></div>
   </section>
@@ -132,6 +138,7 @@ h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
 <div class="bar" id="bar" hidden>
   <div class="wrap">
     <button id="hold" title="Press and hold to see the original">Hold: original</button>
+    <button id="savePng" disabled title="Lossless, larger file">PNG</button>
     <button class="primary" id="save" disabled>Choose a look</button>
   </div>
 </div>
@@ -660,6 +667,100 @@ function applyGeometry(id, g, geo) {
   return warpImage(id, rot, vk);
 }
 
+
+/* ============================================================ composition: subject-aware reframing */
+const ASPECTS = { "4:5": 0.8, "1:1": 1, "5:4": 1.25, "3:2": 1.5, "16:9": 16 / 9 };
+/** How each look likes to be framed (documented habits where they exist, e.g. Cartier-Bresson refused to crop). */
+function framePrefs(st) {
+  const o = { aspect: null, minScale: 0.8, tight: 0.3, centerHorizon: false, horizonRule: true };
+  const id = st.id, cat = st.category;
+  if (cat === "Portrait" || ["ph_mccurry", "ph_leibovitz", "ph_lindbergh"].includes(id)) Object.assign(o, { aspect: "4:5", minScale: 0.65, tight: 0.55 });
+  else if (cat === "Architecture" || ["ph_stoller", "ph_shulman", "ph_baan", "ph_binet"].includes(id)) Object.assign(o, { minScale: 0.9, tight: 0.1, horizonRule: false });
+  else if (cat === "Landscape") Object.assign(o, { minScale: 0.85, tight: 0.2 });
+  else if (cat === "Cinematic" || id === "film_cinestill" || id === "bw_noir") Object.assign(o, { aspect: "16:9", minScale: 0.7, tight: 0.3 });
+  else if (cat === "Commercial") Object.assign(o, { minScale: 0.85, tight: 0.35, horizonRule: false });
+  else if (cat === "Street") Object.assign(o, { minScale: 0.7, tight: 0.45 });
+  if (id === "ph_hcb") Object.assign(o, { aspect: null, minScale: 1, tight: 0 });                        // full frame, no cropping
+  if (id === "ph_maier") Object.assign(o, { aspect: "1:1", minScale: 0.6, tight: 0.4 });
+  if (id === "ph_sugimoto") Object.assign(o, { aspect: "5:4", minScale: 0.8, tight: 0.1, centerHorizon: true });
+  if (id === "ph_adams") Object.assign(o, { aspect: "5:4", minScale: 0.8, tight: 0.2 });
+  if (id === "ph_moriyama" || id === "street_gritty") Object.assign(o, { minScale: 0.62, tight: 0.7 });
+  if (id === "ph_koudelka" || id === "ph_frank") Object.assign(o, { minScale: 0.7, tight: 0.5 });
+  return o;
+}
+function saliency(lab, faces) {
+  const { w, h, L, a, b } = lab, n = w * h, C = new Float32Array(n);
+  for (let i = 0; i < n; i++) C[i] = Math.hypot(a[i], b[i]);
+  const f = (arr, s) => gauss(arr, w, h, s), ls = f(L, 1.5), ll = f(L, w / 7), cs = f(C, 1.5), cl = f(C, w / 7), as = f(a, 1.5), al = f(a, w / 7), bs = f(b, 1.5), bl = f(b, w / 7);
+  const S = new Float32Array(n);
+  for (let i = 0; i < n; i++) S[i] = Math.abs(ls[i] - ll[i]) + 1.5 * Math.abs(cs[i] - cl[i]) + 1.5 * Math.hypot(as[i] - al[i], bs[i] - bl[i]);
+  let mx = 1e-6; for (let i = 0; i < n; i++) mx = Math.max(mx, S[i]);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {                 // subjects are rarely glued to the border
+    const e = Math.min(x, w - 1 - x, y, h - 1 - y) / (0.12 * Math.min(w, h)), i = y * w + x;
+    S[i] = (S[i] / mx) * (0.55 + 0.45 * clamp(e, 0, 1));
+  }
+  for (const fc of faces || []) {
+    const cx = (fc[0] + fc[2] / 2) * w, cy = (fc[1] + fc[3] / 2) * h, r = Math.max(fc[2] * w, fc[3] * h) * 0.9;
+    const x0 = Math.max(0, Math.floor(cx - 2.5 * r)), x1 = Math.min(w - 1, Math.ceil(cx + 2.5 * r)), y0 = Math.max(0, Math.floor(cy - 2.5 * r)), y1 = Math.min(h - 1, Math.ceil(cy + 2.5 * r));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) S[y * w + x] += 2.2 * Math.exp(-(((x - cx) ** 2 + (y - cy) ** 2) / (r * r)));
+  }
+  return S;
+}
+function findHorizon(L, w, h) {
+  const rows = new Float32Array(h);
+  for (let y = 0; y < h; y++) { let s = 0; for (let x = 0; x < w; x++) s += L[y * w + x]; rows[y] = s / w; }
+  let best = -1, bv = 0;
+  for (let y = Math.round(h * 0.2); y < Math.round(h * 0.8); y++) { const g = Math.abs(rows[Math.min(h - 1, y + 2)] - rows[Math.max(0, y - 2)]); if (g > bv) { bv = g; best = y; } }
+  if (best < 0 || bv < 0.1) return null;
+  const sign = Math.sign(rows[best + 2] - rows[best - 2]); let agree = 0;
+  for (let x = 0; x < w; x++) { const d = L[Math.min(h - 1, best + 2) * w + x] - L[Math.max(0, best - 2) * w + x]; if (Math.sign(d) === sign && Math.abs(d) > 0.03) agree++; }
+  return agree / w > 0.75 ? best / h : null;
+}
+/** Choose the crop a photographer would: keep faces whole, put the subject on a third, avoid a horizon through the middle. */
+function planCrop(small, faces, pref) {
+  const { w: W, h: H } = small, S = saliency(small, faces), hz = pref.horizonRule || pref.centerHorizon ? findHorizon(small.L, W, H) : null;
+  const iw = W + 1, sat = new Float64Array(iw * (H + 1)), sx = new Float64Array(iw * (H + 1)), sy = new Float64Array(iw * (H + 1));
+  for (let y = 0; y < H; y++) { let r = 0, rx = 0, ry = 0; for (let x = 0; x < W; x++) { const v = S[y * W + x]; r += v; rx += v * x; ry += v * y; const k = (y + 1) * iw + x + 1; sat[k] = sat[k - iw] + r; sx[k] = sx[k - iw] + rx; sy[k] = sy[k - iw] + ry; } }
+  const box = (T, x0, y0, x1, y1) => T[y1 * iw + x1] - T[y0 * iw + x1] - T[y1 * iw + x0] + T[y0 * iw + x0], total = sat[H * iw + W] || 1;
+  const srcA = W / H;
+  let A = srcA, forced = false;
+  if (pref.aspect) { const t = ASPECTS[pref.aspect], tt = srcA < 1 && t > 1 ? 1 / t : t; const ratio = Math.max(tt / srcA, srcA / tt); if (ratio < 1.7) { A = (srcA < 1 && pref.aspect === "16:9") ? 4 / 5 : tt; forced = Math.abs(A - srcA) > 0.02; } }
+  let fw = W, fh = W / A; if (fh > H) { fh = H; fw = H * A; }
+  const pw = (fc) => [fc[0] * W - fc[2] * W * 0.12, fc[1] * H - fc[3] * H * 0.18, (fc[0] + fc[2]) * W + fc[2] * W * 0.12, (fc[1] + fc[3]) * H + fc[3] * H * 0.12];
+  const score = (cx, cy, cw, ch) => {
+    const x0 = Math.round(cx), y0 = Math.round(cy), x1 = Math.round(cx + cw), y1 = Math.round(cy + ch), area = (x1 - x0) * (y1 - y0) / (W * H);
+    const m = box(sat, x0, y0, x1, y1), mass = m / total;
+    let thirds = 0; if (m > 1e-6) { const gx = (box(sx, x0, y0, x1, y1) / m - x0) / (x1 - x0), gy = (box(sy, x0, y0, x1, y1) / m - y0) / (y1 - y0); thirds = clamp(1 - Math.min(...[[1 / 3, 1 / 3], [2 / 3, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 2 / 3]].map(p => Math.hypot(gx - p[0], gy - p[1]))) / 0.3, 0, 1); }
+    let sc = 1.2 * mass + pref.tight * (1 - area) + 0.4 * thirds;
+    for (const fc of faces || []) { const b = pw(fc); if (b[0] < x0 || b[2] > x1 || b[1] < y0 + 0.04 * (y1 - y0) || b[3] > y1) sc -= 3; else { const eye = ((fc[1] + fc[3] * 0.4) * H - y0) / (y1 - y0); sc += 0.15 * clamp(1 - Math.abs(eye - 0.38) / 0.25, 0, 1); } }
+    if (hz != null) {
+      const yh = (hz * H - y0) / (y1 - y0);
+      if (yh > 0.04 && yh < 0.96) sc += pref.centerHorizon ? 0.5 * clamp(1 - Math.abs(yh - 0.5) / 0.12, 0, 1) - 0.1 : 0.45 * clamp(1 - Math.min(Math.abs(yh - 1 / 3), Math.abs(yh - 2 / 3)) / 0.16, 0, 1) - (yh > 0.42 && yh < 0.58 ? 0.3 : 0);
+    }
+    return sc;
+  };
+  let best = null, baseline = null;
+  for (let k = 1; k >= pref.minScale - 1e-6; k -= 0.05) {
+    const cw = fw * k, ch = fh * k, nx = k > 0.999 ? 1 : 7, ny = k > 0.999 ? 1 : 7;
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+      const cx = nx === 1 ? (W - cw) / 2 : ((W - cw) * i) / (nx - 1), cy = ny === 1 ? (H - ch) / 2 : ((H - ch) * j) / (ny - 1), sc = score(cx, cy, cw, ch);
+      if (k > 0.999 && baseline == null) baseline = sc;
+      if (!best || sc > best.sc) best = { sc, x: cx / W, y: cy / H, w: cw / W, h: ch / H, k };
+    }
+  }
+  if (!best) return null;
+  const changed = forced || (best.k < 0.97 && best.sc - baseline > 0.1);
+  if (!changed) return null;
+  if (!forced && best.k >= 0.97) return null;
+  const note = `${forced ? "Reframed to " + pref.aspect : "Tightened the frame"}${faces && faces.length ? ", faces kept whole" : ", subject placed on a third"}${hz != null ? ", horizon on a third" : ""}`;
+  return { x: best.x, y: best.y, w: best.w, h: best.h, note };
+}
+function cropLab(lab, r) {
+  const x0 = Math.round(r.x * lab.w), y0 = Math.round(r.y * lab.h), cw = Math.max(8, Math.round(r.w * lab.w)), ch = Math.max(8, Math.round(r.h * lab.h));
+  const cut = src => { const o = new Float32Array(cw * ch); for (let y = 0; y < ch; y++) o.set(src.subarray((y0 + y) * lab.w + x0, (y0 + y) * lab.w + x0 + cw), y * cw); return o; };
+  return { w: cw, h: ch, L: cut(lab.L), a: cut(lab.a), b: cut(lab.b) };
+}
+
 /* ============================================================ analysis (on a small proxy) */
 function percentiles(arr, qs, lo, hi) {
   const bins = 1024, hist = new Uint32Array(bins), sc = (bins - 1) / (hi - lo);
@@ -707,17 +808,18 @@ function analyze(id) {
     if (y > h * 0.7 || g > 0.045) continue;
     let hd = Math.atan2(b[i], a[i]) / deg; if (hd < 0) hd += 360;
     const blue = hd > 205 && hd < 285 && C[i] > 0.025 && L[i] > 0.45, over = L[i] > 0.78 && C[i] < 0.035 && g < 0.03;
-    if (blue || over) cand[i] = 1;
+    if (blue) cand[i] = 2; else if (over) cand[i] = 1;
   }
   const seen = new Uint8Array(n), stack = [];
   for (let x = 0; x < w; x++) for (let y = 0; y < Math.max(2, Math.round(h * 0.04)); y++) { const i = y * w + x; if (cand[i] && !seen[i]) { seen[i] = 1; stack.push(i); } }
-  let area = 0;
+  let area = 0, blueN = 0;
   while (stack.length) {
-    const i = stack.pop(); area++; const x = i % w, y = (i / w) | 0;
+    const i = stack.pop(); area++; if (cand[i] === 2) blueN++; const x = i % w, y = (i / w) | 0;
     for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && cand[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
   }
   an.sky = area / n; an.skyMask = null;
-  if (an.sky >= 0.04) { const m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = seen[i]; an.skyMask = { d: gauss(m, w, h, Math.max(2, w / 150)), w, h }; } else an.sky = 0;
+  /* real sky = blue, or a large overcast expanse */
+  if (an.sky >= 0.04 && (blueN / Math.max(area, 1) > 0.3 || an.sky > 0.15)) { const m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = seen[i]; an.skyMask = { d: gauss(m, w, h, Math.max(2, w / 150)), w, h }; } else an.sky = 0;
   // line structure: share of strong edges that are vertical / horizontal (architecture cue)
   let strong = 0, vert = 0, horiz = 0;
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
@@ -853,14 +955,28 @@ function planRecipe(an, style, proxy) {
   if (!(an.faces && an.faces.length)) r.local.skin_smooth = 0;
   if (an.night) { r.tone.shadows = Math.min(r.tone.shadows, 15); notes.push("Night scene: keeping the darkness"); }
   notes.push(...solveTone(proxy, r, style.targets || { median: 0.52 }, an));
+  r.frame = framePrefs(style);
   return { r, notes };
 }
 
 /* ============================================================ render a recipe on an ImageData */
 function wbFor(r, an) { return Math.abs(r.wb.mired) > 0.05 || Math.abs(r.wb.tint) > 0.05 ? wbGains(r.wb.mired, r.wb.tint) : null; }
+function cropSmall(d, w, h, r) {
+  const x0 = Math.round(r.x * w), y0 = Math.round(r.y * h), cw = Math.max(2, Math.round(r.w * w)), ch = Math.max(2, Math.round(r.h * h)), o = new Float32Array(cw * ch);
+  for (let y = 0; y < ch; y++) o.set(d.subarray((y0 + y) * w + x0, (y0 + y) * w + x0 + cw), y * cw);
+  return { d: o, w: cw, h: ch };
+}
 function develop(id, r, an, fullLong) {
   id = applyGeometry(id, r.geometry, an.geo);
-  const lab = toLab(id, wbFor(r, an)), long = Math.max(lab.w, lab.h);
+  let lab = toLab(id, wbFor(r, an)), note = "", crop = null;
+  const long0 = Math.max(lab.w, lab.h);
+  if (state.autoFrame && r.frame) {
+    const small = shrinkLab(lab, 120), warped = an.geo && (r.geometry.auto_upright || r.geometry.auto_horizon) && (an.geo.conf > 0.25 || an.geo.horizon != null);
+    crop = planCrop(small, warped ? [] : an.faces, r.frame);
+    if (crop) { lab = cropLab(lab, crop); note = crop.note; }
+  }
+  const long = Math.max(lab.w, lab.h);
+  an = crop ? Object.assign({}, an, { faces: (an.faces || []).map(f => [(f[0] - crop.x) / crop.w, (f[1] - crop.y) / crop.h, f[2] / crop.w, f[3] / crop.h]), skyMask: an.skyMask ? cropSmall(an.skyMask.d, an.skyMask.w, an.skyMask.h, crop) : null }) : an;
   let skyMask = null;
   if (an.skyMask) { skyMask = upBilinear(an.skyMask.d, an.skyMask.w, an.skyMask.h, lab.w, lab.h); skyMask = guided(lab.L, skyMask, lab.w, lab.h, 0.006, 0.0001); for (let i = 0; i < skyMask.length; i++) skyMask[i] = clamp(skyMask[i], 0, 1); }
   const ev = r.exposure.ev;
@@ -871,6 +987,7 @@ function develop(id, r, an, fullLong) {
   opGrade(lab, r.color.grade); opBW(lab, r.color.bw); opCurveFade(lab, r.tone); opDesatExtremes(lab, r.tone);
   opEffects(lab, r.effects, long, 7);
   opSharpen(lab, r.detail, long);
+  lab.note = note;
   return lab;
 }
 function renderToCanvas(canvas, lab, dither) {
@@ -881,7 +998,7 @@ function renderToCanvas(canvas, lab, dither) {
 
 /* ============================================================ app state & image plumbing */
 const DATA = window.__DATA__; DATA.byId = Object.fromEntries(DATA.styles.map(s => [s.id, s]));
-const state = { photos: [], cur: -1, chosen: null, token: 0 };
+const state = { photos: [], cur: -1, chosen: null, token: 0, autoFrame: true };
 const MAX_EXPORT = 2600, PREVIEW = 1300, THUMB = 420;
 
 function sizeTo(bmp, maxSide) {
@@ -984,6 +1101,7 @@ async function renderLooks(p) {
       p.plans.set(id, { r, notes });
     }
     const { r } = p.plans.get(id), lab = develop(p.thumb.id, r, p.an, p.thumb.canvas.width);
+    (p.fnotes = p.fnotes || {})[id] = lab.note;
     for (const t of p.tiles.get(id) || []) { renderToCanvas($("canvas", t), lab, false); t.classList.add("done"); }
     if (id === p.rec.list[0] || (p.tiles.get(id) || []).length) await tick();
   }
@@ -995,7 +1113,7 @@ function shrinkLab(lab, maxDim) {
 }
 
 /* ------------------------------------------------------------ choosing + saving */
-function drawCanvas(src, label) { const m = $("#main"); m.width = src.width; m.height = src.height; m.getContext("2d").drawImage(src, 0, 0); $("#badge").textContent = label.replace(/^[^–]+– /, ""); }
+function drawCanvas(src, label) { setTimeout(updateWhy, 0); const m = $("#main"); m.width = src.width; m.height = src.height; m.getContext("2d").drawImage(src, 0, 0); $("#badge").textContent = label.replace(/^[^–]+– /, ""); }
 async function choose(id) {
   const p = state.photos[state.cur]; p.chosen = id; state.chosen = id;
   document.querySelectorAll(".tile").forEach(t => t.classList.toggle("sel", t.dataset.id === id));
@@ -1005,29 +1123,46 @@ async function choose(id) {
   const c = document.createElement("canvas");
   const plan = p.plans.get(id) || planRecipe(p.an, DATA.byId[id], shrinkLab(toLab(p.thumb.id), 190));
   p.plans.set(id, plan);
-  renderToCanvas(c, develop(p.prev.id, plan.r, p.an, p.prev.canvas.width), true);
+  const dl = develop(p.prev.id, plan.r, p.an, p.prev.canvas.width);
+  (p.fnotes = p.fnotes || {})[id] = dl.note;
+  renderToCanvas(c, dl, true);
   p.cache.set(id, c); if (p.cache.size > 6) p.cache.delete(p.cache.keys().next().value);
   if (state.photos[state.cur] === p && p.chosen === id) drawCanvas(c, DATA.byId[id].name);
   busy(false);
 }
+function updateWhy() {
+  const p = state.photos[state.cur], id = state.chosen, el = $("#why");
+  if (!p || !id || !p.plans.has(id)) { el.textContent = ""; return; }
+  const parts = p.plans.get(id).notes.slice(0, 3).concat(p.fnotes && p.fnotes[id] ? [p.fnotes[id]] : []);
+  el.textContent = parts.join(" · ");
+}
 function updateSave() {
   const b = $("#save"), s = state.chosen && DATA.byId[state.chosen];
+  $("#savePng").disabled = !s; updateWhy();
   b.disabled = !s; b.textContent = s ? "Save: " + (s.photographer ? s.photographer : s.name.split(" – ").pop()) : "Choose a look";
 }
 function busy(on, text) { $("#busy").hidden = !on; if (text) $("#busyText").textContent = text; }
 function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
 
-async function exportCurrent() {
+async function exportCurrent(kind) {
   const p = state.photos[state.cur], id = state.chosen; if (!id) return;
-  busy(true, "Saving full size…"); await tick(); await tick();
+  const png = kind === "png";
+  busy(true, png ? "Saving lossless PNG…" : "Saving full size…"); await tick(); await tick();
   try {
-    const full = sizeTo(p.bmp, MAX_EXPORT), plan = p.plans.get(id), c = document.createElement("canvas");
-    renderToCanvas(c, develop(full.id, plan.r, p.an, full.canvas.width), true);
-    const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.94));
-    const name = `${p.name}_${id}.jpg`;
+    const plan = p.plans.get(id); let blob = null, c = null;
+    for (const side of [3200, 2600, 2000, 1500]) {          // largest the device can handle
+      try {
+        const full = sizeTo(p.bmp, side); c = document.createElement("canvas");
+        renderToCanvas(c, develop(full.id, plan.r, p.an, full.canvas.width), true);
+        blob = await new Promise(res => c.toBlob(res, png ? "image/png" : "image/jpeg", 0.98));
+        if (blob) break;
+      } catch (e) { blob = null; }
+    }
+    if (!blob) throw new Error("render failed");
+    const name = `${p.name}_${id}.${png ? "png" : "jpg"}`;
     busy(false);
     let saved = false;
-    try { const dl = await claude.use("downloads"); if (dl) { await dl.save({ filename: name, data: blob }); saved = true; toast("Saved"); } } catch (e) { if (e && e.code === "declined") return; }
+    try { const dl = await claude.use("downloads"); if (dl) { await dl.save({ filename: name, data: blob }); saved = true; toast("Saved " + c.width + " × " + c.height); } } catch (e) { if (e && e.code === "declined") return; }
     if (!saved) showSheet(blob, name);
   } catch (e) { busy(false); toast("Could not save that one. Try a smaller photo."); }
 }
@@ -1054,7 +1189,9 @@ function sampleScene() {
 }
 $("#pick").addEventListener("change", e => { addPhotos(e.target.files); e.target.value = ""; });
 $("#sample").onclick = async () => addPhotoFrom(await sampleScene());
-$("#save").onclick = exportCurrent;
+$("#save").onclick = () => exportCurrent("jpg");
+$("#savePng").onclick = () => exportCurrent("png");
+$("#frameToggle").addEventListener("change", e => { state.autoFrame = e.target.checked; state.photos.forEach(p => p.cache.clear()); const p = state.photos[state.cur]; if (!p) return; buildLooks(p); renderLooks(p); if (state.chosen) { const id = state.chosen; p.chosen = null; choose(id); } });
 const hold = $("#hold");
 const showOrig = () => { if (state.cur >= 0) drawOriginal(); };
 const showEdit = () => { const p = state.photos[state.cur]; if (p && state.chosen && p.cache.has(state.chosen)) drawCanvas(p.cache.get(state.chosen), DATA.byId[state.chosen].name); };
