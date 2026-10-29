@@ -745,6 +745,52 @@ add("ph_lindbergh", "Peter Lindbergh – Raw Cinematic B&W", _PH,
     "Documented: believed retouching should be minimal, often black & white for drama. Interpretation: silvery neutral-cool grade, skin texture deliberately preserved (no smoothing).",
     "Peter Lindbergh", ["https://retouchinglabs.com/famous-portrait-photographers-of-the-21st-century/"])
 
+add("ph_mckinnon", "Peter McKinnon – Cinematic Teal & Orange", _PH,
+    "Cinematic travel and lifestyle grade: orange skin and warm light against deep teal-blue shadows, punchy contrast, rich blues.",
+    ["mckinnon", "peter mckinnon", "cinematic", "teal and orange", "youtube travel", "orange skin blue shadows", "moody travel", "cinematic travel"],
+    {"tone": {"contrast": 1.2, "highlights": -22, "shadows": 12, "blacks": -8, "toe": 0.3},
+     "presence": {"clarity": 10, "dehaze": 6, "micro_contrast": 6},
+     "color": {"saturation": 2, "vibrance": 16, "skin_protect": 0.9,
+               "grade": {"shadows": zone(200, 0.34), "mids": zone(55, 0.06), "highlights": zone(60, 0.3), "blend": 0.6},
+               "hsl": hsl(orange=(0, 0.04, 0.03), blue=(0.02, 0.14, -0.12), aqua=(-0.1, 0.1, -0.06), green=(-0.1, -0.25, -0.05))},
+     "local": {"subject": {"exposure": 0.2}},
+     "effects": {"vignette": {"amount": 0.2}, "grain": {"amount": 0.06}}},
+    T(0.44, 0.012, 0.96, preserve_key=0.4, lift_shadows=False), {},
+    "Documented (analysis articles, not his own statement): colours are cinematic rather than true to life, with teal/blue shadows and orange/yellow highlights. "
+    "Interpretation: split-tone toward teal shadows and warm highlights, greens pulled back so skin and sky carry the colour.",
+    "Peter McKinnon", ["https://imagen-ai.com/valuable-tips/peter-mckinnon-lightroom/"])
+
+add("ph_woelfel", "Brandon Woelfel – Teal & Pink Night", _PH,
+    "Dreamy night portraits and city lights: teal shadows, pink and magenta glow, soft bokeh bloom, restrained skin saturation.",
+    ["woelfel", "brandon woelfel", "bokeh night", "teal and pink", "neon portrait", "dreamy night", "city lights portrait", "pastel neon"],
+    {"tone": {"contrast": 1.08, "highlights": -26, "shadows": 20, "blacks": -4, "fade": 0.015},
+     "presence": {"clarity": -4, "dehaze": -2},
+     "color": {"saturation": 4, "vibrance": 18, "skin_protect": 1.0,
+               "grade": {"shadows": zone(185, 0.36), "mids": zone(330, 0.08), "highlights": zone(335, 0.3), "blend": 0.55},
+               "hsl": hsl(red=(0.04, -0.12, 0), magenta=(0, 0.18, 0.04), blue=(-0.05, 0.1, 0), aqua=(0, 0.14, 0))},
+     "effects": {"glow": {"amount": 0.16}, "halation": {"amount": 0.16, "radius": 0.012, "threshold": 0.82, "hue": 340},
+                 "grain": {"amount": 0.08}}},
+    T(0.4, 0.014, 0.95, preserve_key=0.55, lift_shadows=False, auto_black=False), {"nr": 1.1},
+    "Documented (a tutorial reproducing the look): mostly teal and pink tones, made by shifting the blue, green and red primaries and lowering red saturation to protect skin. "
+    "Interpretation: teal shadows, pink highlights and soft glow.",
+    "Brandon Woelfel", ["https://photoshopdesire.com/edit-photos-like-brandon-woelfel-photoshop-lightroom/"])
+
+add("ph_locardi", "Elia Locardi – Blue Hour Travel", _PH,
+    "Polished travel landscape: luminous blue-hour skies, warm lit windows and lights, clean detail everywhere, deep but open shadows.",
+    ["locardi", "elia locardi", "blue hour", "travel landscape", "cityscape twilight", "golden hour", "blending moments in time", "vibrant landscape"],
+    {"tone": {"contrast": 1.12, "highlights": -30, "shadows": 30, "whites": 6, "blacks": -6, "toe": 0.3},
+     "presence": {"clarity": 10, "dehaze": 10, "texture": 6, "micro_contrast": 8},
+     "color": {"saturation": 6, "vibrance": 22,
+               "grade": {"shadows": zone(225, 0.18), "highlights": zone(50, 0.22), "blend": 0.55},
+               "hsl": hsl(blue=(0, 0.16, -0.08), orange=(0, 0.1, 0.05), yellow=(0, 0.08, 0.03), aqua=(0, 0.1, -0.04))},
+     "local": {"sky": {"exposure": -0.3, "saturation": 0.12}},
+     "detail": {"sharpen": 0.9},
+     "effects": {"vignette": {"amount": 0.1}}},
+    T(0.46, 0.012, 0.97, preserve_key=0.4), {},
+    "Documented: known for blending exposures from sunset through blue hour; his preset line targets sunsets, blue hours and golden hours. "
+    "Interpretation: we cannot blend several frames from one file, so the look is approximated by sky recovery, lifted shadows and a warm/cool grade.",
+    "Elia Locardi", ["https://fstoppers.com/product/photographing-world-1-landscape-photography-and-post-processing-elia-locardi"])
+
 add("ph_hido", "Todd Hido – Suburban Night", _PH,
     "Moody twilight suburbia: fluorescent teal-green shadows, amber windows, long-exposure softness and film grain.",
     ["todd hido", "hido", "suburban night", "house hunting", "twilight windows", "lonely house", "fluorescent green", "moody suburbia"],

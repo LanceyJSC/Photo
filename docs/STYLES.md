@@ -515,6 +515,39 @@ Natural, barely retouched black & white: honest skin texture, silvery cinematic 
 *Say:* lindbergh, peter lindbergh, supermodels, natural black and white portrait, unretouched, cinematic bw portrait  
 *Sources:* [1](https://retouchinglabs.com/famous-portrait-photographers-of-the-21st-century/)
 
+### Peter McKinnon – Cinematic Teal & Orange  
+`ph_mckinnon`
+
+Cinematic travel and lifestyle grade: orange skin and warm light against deep teal-blue shadows, punchy contrast, rich blues.
+
+*Basis:* Documented (analysis articles, not his own statement): colours are cinematic rather than true to life, with teal/blue shadows and orange/yellow highlights. Interpretation: split-tone toward teal shadows and warm highlights, greens pulled back so skin and sky carry the colour.
+
+*Targets:* median lightness 0.44, black 0.012, highlights 0.96, preserves 40% of the original key  
+*Say:* mckinnon, peter mckinnon, cinematic, teal and orange, youtube travel, orange skin blue shadows  
+*Sources:* [1](https://imagen-ai.com/valuable-tips/peter-mckinnon-lightroom/)
+
+### Brandon Woelfel – Teal & Pink Night  
+`ph_woelfel`
+
+Dreamy night portraits and city lights: teal shadows, pink and magenta glow, soft bokeh bloom, restrained skin saturation.
+
+*Basis:* Documented (a tutorial reproducing the look): mostly teal and pink tones, made by shifting the blue, green and red primaries and lowering red saturation to protect skin. Interpretation: teal shadows, pink highlights and soft glow.
+
+*Targets:* median lightness 0.4, black 0.014, highlights 0.95, preserves 55% of the original key  
+*Say:* woelfel, brandon woelfel, bokeh night, teal and pink, neon portrait, dreamy night  
+*Sources:* [1](https://photoshopdesire.com/edit-photos-like-brandon-woelfel-photoshop-lightroom/)
+
+### Elia Locardi – Blue Hour Travel  
+`ph_locardi`
+
+Polished travel landscape: luminous blue-hour skies, warm lit windows and lights, clean detail everywhere, deep but open shadows.
+
+*Basis:* Documented: known for blending exposures from sunset through blue hour; his preset line targets sunsets, blue hours and golden hours. Interpretation: we cannot blend several frames from one file, so the look is approximated by sky recovery, lifted shadows and a warm/cool grade.
+
+*Targets:* median lightness 0.46, black 0.012, highlights 0.97, preserves 40% of the original key  
+*Say:* locardi, elia locardi, blue hour, travel landscape, cityscape twilight, golden hour  
+*Sources:* [1](https://fstoppers.com/product/photographing-world-1-landscape-photography-and-post-processing-elia-locardi)
+
 ### Todd Hido – Suburban Night  
 `ph_hido`
 

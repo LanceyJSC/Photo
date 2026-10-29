@@ -14,10 +14,10 @@ darkroom edit IMG_0001.CR3  # asks "What look are you going for?" in the termina
 darkroom edit shoot/ -l "gritty black and white street" -o out --format jpg,tif
 darkroom watch ~/Inbox ~/Edited -s arch_clean   # edits anything dropped in a folder
 darkroom serve --lan        # same, reachable from your phone (prints a private link + QR code)
-darkroom styles             # list the 56 looks
+darkroom styles             # list the 59 looks
 ```
 
-In the web app you never edit anything yourself: **add photos → Darkroom shows *your* photo rendered in looks chosen for it (portrait looks for faces, architecture looks for buildings, night looks for night…) → tap one → done.** The full list of 56 looks (including the photographer ones) is below the recommendations, with search. The full-resolution export renders in the background (queue on the left, one photo at a time, state survives restarts); drag the before/after handle to compare.
+In the web app you never edit anything yourself: **add photos → Darkroom shows *your* photo rendered in looks chosen for it (portrait looks for faces, architecture looks for buildings, night looks for night…) → tap one → done.** The full list of 59 looks (including the photographer ones) is below the recommendations, with search. The full-resolution export renders in the background (queue on the left, one photo at a time, state survives restarts); drag the before/after handle to compare.
 
 `--explain` (CLI) / "What I did" (web) lists the decisions made for that photo, e.g.
 
@@ -45,7 +45,7 @@ Tone: highlights -58 to hold 0.31% clipping
 | **Effects** | Halation, glow, vignette, luminance-dependent film grain |
 | **Output** | Resolution-aware, noise-aware, edge-masked sharpening; JPEG / 16-bit TIFF / PNG |
 
-56 styles in 11 groups — see [docs/STYLES.md](docs/STYLES.md): street (classic, gritty, Tri-X B&W, ultra-grain, neon night, muted urban), architecture (clean, interior, dramatic, B&W, minimal), landscape (natural, golden hour, moody, vivid), portrait (natural, Portra, dark & moody, light & airy, B&W), film (Kodachrome, Velvia, Ektar, CineStill 800T, faded vintage), black & white (HP5, Delta, high-key, noir), cinematic (teal & orange, bleach bypass), commercial (product, food), night, and a neutral pro develop.
+59 styles in 11 groups — see [docs/STYLES.md](docs/STYLES.md): street (classic, gritty, Tri-X B&W, ultra-grain, neon night, muted urban), architecture (clean, interior, dramatic, B&W, minimal), landscape (natural, golden hour, moody, vivid), portrait (natural, Portra, dark & moody, light & airy, B&W), film (Kodachrome, Velvia, Ektar, CineStill 800T, faded vintage), black & white (HP5, Delta, high-key, noir), cinematic (teal & orange, bleach bypass), commercial (product, food), night, and a neutral pro develop.
 
 **In the manner of a photographer** (21 looks, researched — see below): Ansel Adams, Daido Moriyama, Henri Cartier-Bresson, Fan Ho, Vivian Maier, Sebastião Salgado, Josef Koudelka, Robert Frank, Saul Leiter, William Eggleston, Fred Herzog, Alex Webb, Steve McCurry, Annie Leibovitz, Peter Lindbergh, Todd Hido, Ezra Stoller, Julius Shulman, Iwan Baan, Hélène Binet, Hiroshi Sugimoto. Just type e.g. `like Salgado` or `Moriyama`.
 
@@ -53,7 +53,7 @@ Describe a look in words (`"dark moody portrait, warm, grainy"`) and it picks th
 
 ## Phone-only version (nothing to install or host)
 
-`browser/darkroom.html` is the whole editor as one static page: the same 56 looks, exposure/highlight/skin/sky analysis, face detection (OpenCV's Haar model ported to JS) and auto-straightening, all running in the phone's browser. Open it from any static host (e.g. GitHub Pages) or as a Claude artifact; photos never leave the device. Limits versus the full app: JPEG/HEIC/PNG input only (no RAW), exports up to ~2600 px on the long side, no noise reduction. Rebuild it with `python scripts/build_browser.py` after changing `darkroom/styles.py` or `browser/darkroom.template.html`.
+`browser/darkroom.html` is the whole editor as one static page: the same 59 looks, exposure/highlight/skin/sky analysis, face detection (OpenCV's Haar model ported to JS) and auto-straightening, all running in the phone's browser. Open it from any static host (e.g. GitHub Pages) or as a Claude artifact; photos never leave the device. Limits versus the full app: JPEG/HEIC/PNG input only (no RAW), exports up to ~2600 px on the long side, no noise reduction. Rebuild it with `python scripts/build_browser.py` after changing `darkroom/styles.py` or `browser/darkroom.template.html`.
 
 ### iPhone RAW in the phone version
 

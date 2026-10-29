@@ -6,10 +6,10 @@ from .analysis import Analysis
 
 _PORTRAIT = ["portrait_natural", "ph_mccurry", "ph_leibovitz", "portrait_warm_film", "portrait_bw", "ph_lindbergh",
              "portrait_moody", "portrait_airy"]
-_LANDSCAPE = ["land_natural", "ph_adams", "land_golden", "land_vivid", "ph_salgado", "film_velvia", "land_moody", "ph_sugimoto"]
+_LANDSCAPE = ["land_natural", "ph_adams", "land_golden", "land_vivid", "ph_salgado", "film_velvia", "land_moody", "ph_locardi", "ph_sugimoto"]
 _ARCH = ["arch_clean", "ph_stoller", "arch_bw", "ph_shulman", "arch_dramatic", "ph_baan", "arch_minimal", "ph_binet"]
-_NIGHT = ["street_neon_night", "night_city", "film_cinestill", "ph_hido", "bw_noir", "cine_teal_orange"]
-_STREET = ["street_classic", "street_bw_trix", "ph_hcb", "ph_moriyama", "ph_herzog", "ph_leiter", "street_gritty", "ph_webb"]
+_NIGHT = ["street_neon_night", "night_city", "film_cinestill", "ph_hido", "ph_woelfel", "bw_noir", "cine_teal_orange"]
+_STREET = ["street_classic", "street_bw_trix", "ph_hcb", "ph_moriyama", "ph_herzog", "ph_leiter", "street_gritty", "ph_webb", "ph_mckinnon"]
 _FILM = ["portrait_warm_film", "film_kodachrome", "film_ektar", "cine_teal_orange"]
 
 
