@@ -1,0 +1,1072 @@
+<title>Darkroom</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#14110f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout: one column. A sticky photo sits on top while the looks scroll beneath it; a safelight-amber action bar pins to the bottom. */
+:root{
+  --bg:#14110f; --surface:#1e1a17; --surface2:#2a2420; --line:#3b332c;
+  --fg:#f0e9e0; --mute:#a69b8f; --accent:#e8a33d; --accent-ink:#1c1306; --good:#86c797; --bad:#e8786a;
+  --display:"Bricolage Grotesque","DM Sans",system-ui,sans-serif; --body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"DM Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#eceff0; --surface:#ffffff; --surface2:#e1e5e7; --line:#c9d0d3; --fg:#171b1d; --mute:#5c676c; --accent:#b8711a; --accent-ink:#ffffff; --good:#2f7d46; --bad:#b4372b; color-scheme:light}}
+:root[data-theme="light"]{--bg:#eceff0; --surface:#ffffff; --surface2:#e1e5e7; --line:#c9d0d3; --fg:#171b1d; --mute:#5c676c; --accent:#b8711a; --accent-ink:#ffffff; --good:#2f7d46; --bad:#b4372b; color-scheme:light}
+[hidden]{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--body);margin:0;padding-block:0 calc(88px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:30}
+.wrap{max-width:760px;margin:0 auto}
+header{display:flex;align-items:center;gap:12px;padding-block:14px 10px}
+.brand{font:700 22px/1 var(--display);letter-spacing:-.01em;flex:1;min-width:0}
+.brand i{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--accent);margin-right:9px;vertical-align:1px;box-shadow:0 0 14px var(--accent)}
+button,.btn{font:500 14px/1 var(--body);color:var(--fg);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:0 14px;min-height:44px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+button:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+.mono{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+
+/* empty state */
+.hero{padding-block:18px 24px}
+.hero h1{font:700 clamp(30px,8vw,46px)/1.02 var(--display);letter-spacing:-.02em;margin:0 0 12px;text-wrap:balance}
+.hero p{color:var(--mute);margin:0 0 20px;max-width:46ch}
+.hero .row{display:flex;gap:10px;flex-wrap:wrap}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:26px}
+.facts div{border:1px solid var(--line);border-radius:12px;padding:12px 13px;background:var(--surface)}
+.facts b{display:block;font:700 15px var(--display);margin-bottom:3px}
+.facts span{color:var(--mute);font-size:13px}
+
+/* stage */
+.stage{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);padding-block:4px 10px}
+.frame{position:relative;background:#000;border-radius:12px;overflow:hidden;height:min(46svh,520px);height:min(46vh,520px);display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
+@supports (height:1svh){.frame{height:min(46svh,520px)}}
+.frame canvas{max-width:100%;max-height:100%;display:block}
+.badge{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#000b;color:#fff;border-radius:999px;padding:5px 10px;font:500 10.5px var(--mono);letter-spacing:.05em;text-transform:uppercase}
+.busy{position:absolute;inset:0;background:#000a;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:#fff;font:500 13px var(--body)}
+.spin{width:28px;height:28px;border:3px solid #fff3;border-top-color:var(--accent);border-radius:50%;animation:s .9s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}.tile .ph{animation:none!important}}
+.strip{display:flex;gap:8px;overflow-x:auto;padding-block:8px 2px;scrollbar-width:none}
+.strip::-webkit-scrollbar{display:none}
+.strip button{padding:0;min-height:0;width:58px;height:44px;flex:none;border-radius:8px;overflow:hidden;border:2px solid var(--line);background:#000}
+.strip button.sel{border-color:var(--accent)}
+.strip canvas{width:100%;height:100%;object-fit:cover;display:block}
+.strip .add{width:44px;font-size:22px;color:var(--mute)}
+
+/* looks */
+h2{font:700 20px/1.1 var(--display);letter-spacing:-.01em;margin:6px 0 4px}
+.sub{color:var(--mute);margin:0 0 12px;font-size:13.5px}
+.search{width:100%;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:0 13px;min-height:44px;font:16px var(--body)}
+.cat{margin:20px 0 8px}
+.chips{display:flex;gap:7px;overflow-x:auto;padding-block:2px 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{min-height:36px;padding:0 13px;border-radius:999px;font-size:13px;flex:none}
+.chips button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+@media (min-width:560px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.tile{display:flex;flex-direction:column;align-items:stretch;text-align:left;padding:0 0 9px;border-radius:12px;background:var(--surface);border:2px solid var(--line);overflow:hidden;min-height:0;gap:1px;font:inherit;min-width:0}
+.tile.sel{border-color:var(--accent)}
+.tile .ph{aspect-ratio:4/3;background:linear-gradient(110deg,var(--surface) 30%,var(--surface2) 50%,var(--surface) 70%);background-size:200% 100%;animation:sh 1.5s linear infinite;overflow:hidden}
+.tile.done .ph{animation:none}
+@keyframes sh{to{background-position:-200% 0}}
+.tile canvas{width:100%;height:100%;display:block;object-fit:cover}
+.tile b{font:700 13.5px/1.25 var(--display);padding:7px 10px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.tile small{padding:0 10px;color:var(--mute);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.tile[hidden]{display:none}
+
+/* bottom bar */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding-block:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.bar .wrap{display:flex;gap:10px}
+.bar .primary{flex:1;min-height:48px;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.bar #hold{flex:none;touch-action:none;user-select:none;-webkit-user-select:none}
+.note{color:var(--mute);font-size:12.5px;margin-top:22px}
+.sheet{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(14px + env(safe-area-inset-bottom,0px))}
+.sheet img{flex:1;min-height:0;object-fit:contain;width:100%}
+.sheet p{color:var(--mute);margin:10px 0;text-align:center;font-size:13.5px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(100px + env(safe-area-inset-bottom,0px));z-index:50;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:13.5px;max-width:90vw}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand"><i></i>Darkroom</div>
+    <label class="btn" for="pick" id="addBtn" hidden>Add photos</label>
+    <input id="pick" type="file" accept="image/*" multiple hidden>
+  </header>
+
+  <section class="hero" id="hero">
+    <h1>Pick a look. Darkroom does the edit.</h1>
+    <p>Add a photo and see it graded in styles chosen for it, from street and architecture to Salgado and Portra. Tap one and save. No sliders.</p>
+    <div class="row">
+      <label class="btn primary" for="pick" style="min-height:50px;padding:0 20px;font-size:16px">Choose photos</label>
+      <button id="sample" style="min-height:50px">Try a sample scene</button>
+    </div>
+    <div class="facts">
+      <div><b>On your phone</b><span>Edits run in this page. Your photos are never uploaded.</span></div>
+      <div><b>56 looks</b><span>Genres, film stocks and 21 photographers.</span></div>
+      <div><b>Adapts to the shot</b><span>Exposure, highlights, skin and sky are measured first.</span></div>
+    </div>
+    <p class="note">This version edits JPEG and HEIC photos up to about 2600 px on the long side. RAW needs the desktop app.</p>
+  </section>
+
+  <section id="app" hidden>
+    <div class="stage">
+      <div class="frame" id="frame">
+        <canvas id="main"></canvas>
+        <span class="badge" id="badge">Original</span>
+        <div class="busy" id="busy" hidden><div class="spin"></div><span id="busyText">Developing…</span></div>
+      </div>
+      <div class="strip" id="strip"></div>
+    </div>
+
+    <h2 id="lookTitle">Best for this photo</h2>
+    <p class="sub" id="lookSub">Looking at your photo…</p>
+    <div class="chips" id="kinds" role="group" aria-label="Type of photo"></div>
+    <input class="search" id="search" type="search" placeholder="Search looks or photographers" autocomplete="off" enterkeyhint="search">
+    <div id="looks"></div>
+  </section>
+</div>
+
+<div class="bar" id="bar" hidden>
+  <div class="wrap">
+    <button id="hold" title="Press and hold to see the original">Hold: original</button>
+    <button class="primary" id="save" disabled>Choose a look</button>
+  </div>
+</div>
+
+<script>
+/*__DATA__*/
+</script>
+<script>
+"use strict";
+/* ============================================================ helpers */
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const smooth = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0 + 1e-12), 0, 1); return t * t * (3 - 2 * t); };
+const tick = () => new Promise(r => setTimeout(r, 0));
+const clone = o => JSON.parse(JSON.stringify(o));
+const deg = Math.PI / 180;
+
+/* ============================================================ colour: sRGB <-> Oklab */
+const LIN = new Float32Array(256);
+for (let i = 0; i < 256; i++) { const c = i / 255; LIN[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+function enc(v) { v = v < 0 ? 0 : v > 1 ? 1 : v; return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055; }
+
+/** ImageData -> planar Oklab image, with optional white-balance gains applied in linear light */
+function toLab(id, gains) {
+  const w = id.width, h = id.height, n = w * h, d = id.data;
+  const L = new Float32Array(n), A = new Float32Array(n), B = new Float32Array(n);
+  const gr = gains ? gains[0] : 1, gg = gains ? gains[1] : 1, gb = gains ? gains[2] : 1;
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    const r = LIN[d[j]] * gr, g = LIN[d[j + 1]] * gg, b = LIN[d[j + 2]] * gb;
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    L[i] = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+    A[i] = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+    B[i] = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  }
+  return { w, h, L, a: A, b: B };
+}
+
+/** planar Oklab -> display RGB bytes (hue-preserving gamut handling, tanh highlight shoulder, optional dither) */
+function toBytes(img, out, dither) {
+  const { w, h, L, a, b } = img, n = w * h;
+  let seed = 1234567;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    let l0 = L[i];
+    if (l0 > 0.93) l0 = 0.93 + 0.07 * Math.tanh((l0 - 0.93) / 0.07);
+    if (l0 < 0) l0 = 0;
+    const l_ = l0 + 0.3963377774 * a[i] + 0.2158037573 * b[i];
+    const m_ = l0 - 0.1055613458 * a[i] - 0.0638541728 * b[i];
+    const s_ = l0 - 0.0894841775 * a[i] - 1.291485548 * b[i];
+    const l = l_ * l_ * l_, m = m_ * m_ * m_, s = s_ * s_ * s_;
+    let r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+    let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+    let bl = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+    const mn = Math.min(r, g, bl);
+    if (mn < 0) {                                        // pull out-of-gamut colour toward its own luminance
+      const y = Math.max(0.2126 * r + 0.7152 * g + 0.0722 * bl, 1e-6), t = y / Math.max(y - mn, 1e-6);
+      r = y + (r - y) * t; g = y + (g - y) * t; bl = y + (bl - y) * t;
+    }
+    const mx = Math.max(r, g, bl);
+    if (mx > 1) { r /= mx; g /= mx; bl /= mx; }
+    const dz = dither ? (rnd() + rnd() - 1) : 0;
+    out[j] = clamp(enc(r) * 255 + dz, 0, 255);
+    out[j + 1] = clamp(enc(g) * 255 + dz, 0, 255);
+    out[j + 2] = clamp(enc(bl) * 255 + dz, 0, 255);
+    out[j + 3] = 255;
+  }
+  return out;
+}
+
+/* ============================================================ white balance (mired / tint -> linear gains) */
+function wbGains(mired, tint) {
+  const m = mired || 0, t = tint || 0;
+  let r = 1 + 0.00105 * m, g = 1 - 0.00023 * m, b = m >= 0 ? 1 - 0.005 * m : 1 - 0.0055 * m;
+  g *= 1 - 0.0016 * t; r *= 1 + 0.0004 * t; b *= 1 + 0.0004 * t;
+  const k = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return [r / k, g / k, b / k];
+}
+let _jac = null;
+function wbJacobian() {
+  if (_jac) return _jac;
+  const ab = (m, t) => {
+    const g = wbGains(m, t), v = 0.25;
+    const r = v * g[0], gg = v * g[1], b = v * g[2];
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * gg + 0.0514459929 * b), mm = Math.cbrt(0.2119034982 * r + 0.6806995451 * gg + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * gg + 0.6299787005 * b);
+    return [1.9779984951 * l - 2.428592205 * mm + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * mm - 0.808675766 * s];
+  };
+  const o = ab(0, 0), p = ab(15, 0), q = ab(0, 15);
+  _jac = [[(p[0] - o[0]) / 15, (q[0] - o[0]) / 15], [(p[1] - o[1]) / 15, (q[1] - o[1]) / 15]];
+  return _jac;
+}
+function solveWB(a, b) {
+  const J = wbJacobian(), det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+  const ta = -a, tb = -b;
+  return [(ta * J[1][1] - J[0][1] * tb) / det, (J[0][0] * tb - J[1][0] * ta) / det];
+}
+
+/* ============================================================ filters */
+function boxBlur(src, w, h, r) {
+  if (r < 1) return Float32Array.from(src);
+  const tmp = new Float32Array(src.length), out = new Float32Array(src.length), k = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    const o = y * w; let acc = 0;
+    for (let x = -r; x <= r; x++) acc += src[o + clamp(x, 0, w - 1)];
+    tmp[o] = acc / k;
+    for (let x = 1; x < w; x++) { acc += src[o + Math.min(x + r, w - 1)] - src[o + Math.max(x - r - 1, 0)]; tmp[o + x] = acc / k; }
+  }
+  const col = new Float64Array(w);
+  for (let y = -r; y <= r; y++) { const o = clamp(y, 0, h - 1) * w; for (let x = 0; x < w; x++) col[x] += tmp[o + x]; }
+  for (let x = 0; x < w; x++) out[x] = col[x] / k;
+  for (let y = 1; y < h; y++) {
+    const add = Math.min(y + r, h - 1) * w, sub = Math.max(y - r - 1, 0) * w, o = y * w;
+    for (let x = 0; x < w; x++) { col[x] += tmp[add + x] - tmp[sub + x]; out[o + x] = col[x] / k; }
+  }
+  return out;
+}
+function gauss(src, w, h, sigma) {
+  if (sigma < 0.4) return Float32Array.from(src);
+  const n = 3, wi = Math.sqrt((12 * sigma * sigma) / n + 1);
+  let wl = Math.floor(wi); if (wl % 2 === 0) wl--;
+  const wu = wl + 2, m = Math.round((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4));
+  let cur = src;
+  for (let i = 0; i < n; i++) cur = boxBlur(cur, w, h, ((i < m ? wl : wu) - 1) / 2);
+  return cur === src ? Float32Array.from(src) : cur;
+}
+function downBlock(src, w, h, f) {
+  const nw = Math.floor(w / f), nh = Math.floor(h / f), out = new Float32Array(nw * nh), inv = 1 / (f * f);
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+    let s = 0; for (let j = 0; j < f; j++) { const o = (y * f + j) * w + x * f; for (let i = 0; i < f; i++) s += src[o + i]; }
+    out[y * nw + x] = s * inv;
+  }
+  return { d: out, w: nw, h: nh };
+}
+function upBilinear(src, w1, h1, w2, h2) {
+  const out = new Float32Array(w2 * h2), sx = w1 / w2, sy = h1 / h2;
+  for (let y = 0; y < h2; y++) {
+    const fy = clamp((y + 0.5) * sy - 0.5, 0, h1 - 1), y0 = fy | 0, y1 = Math.min(y0 + 1, h1 - 1), ty = fy - y0;
+    for (let x = 0; x < w2; x++) {
+      const fx = clamp((x + 0.5) * sx - 0.5, 0, w1 - 1), x0 = fx | 0, x1 = Math.min(x0 + 1, w1 - 1), tx = fx - x0;
+      const a = src[y0 * w1 + x0] * (1 - tx) + src[y0 * w1 + x1] * tx, b = src[y1 * w1 + x0] * (1 - tx) + src[y1 * w1 + x1] * tx;
+      out[y * w2 + x] = a * (1 - ty) + b * ty;
+    }
+  }
+  return out;
+}
+/** Fast guided filter: coefficients solved on a small copy, applied at full resolution (no halos across strong edges). */
+function guided(guide, src, w, h, rFrac, eps, maxDim = 340) {
+  const f = Math.max(1, Math.ceil(Math.max(w, h) / maxDim));
+  let g = guide, p = src, gw = w, gh = h;
+  if (f > 1) { const dg = downBlock(guide, w, h, f); g = dg.d; gw = dg.w; gh = dg.h; p = src === guide ? g : downBlock(src, w, h, f).d; }
+  const r = Math.max(1, Math.round(rFrac * Math.max(gw, gh))), n = g.length;
+  const gg = new Float32Array(n), gp = new Float32Array(n);
+  for (let i = 0; i < n; i++) { gg[i] = g[i] * g[i]; gp[i] = g[i] * p[i]; }
+  const mg = boxBlur(g, gw, gh, r), mp = p === g ? mg : boxBlur(p, gw, gh, r), mgg = boxBlur(gg, gw, gh, r), mgp = boxBlur(gp, gw, gh, r);
+  const a = new Float32Array(n), b = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = mgg[i] - mg[i] * mg[i], c = mgp[i] - mg[i] * mp[i]; a[i] = c / (v + eps); b[i] = mp[i] - a[i] * mg[i]; }
+  let A = boxBlur(a, gw, gh, r), B = boxBlur(b, gw, gh, r);
+  if (f > 1) { A = upBilinear(A, gw, gh, w, h); B = upBilinear(B, gw, gh, w, h); }
+  const out = new Float32Array(w * h);
+  for (let i = 0; i < out.length; i++) out[i] = A[i] * guide[i] + B[i];
+  return out;
+}
+
+/* ============================================================ tone curves */
+function monotoneSpline(points, n = 2048, xmax = 1) {
+  const pts = points.slice().sort((p, q) => p[0] - q[0]);
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), N = xs.length;
+  const hh = [], d = [];
+  for (let i = 0; i < N - 1; i++) { hh.push(Math.max(xs[i + 1] - xs[i], 1e-9)); d.push((ys[i + 1] - ys[i]) / hh[i]); }
+  const m = new Array(N).fill(0); m[0] = d[0]; m[N - 1] = d[N - 2];
+  for (let i = 1; i < N - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < N - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  const g0 = Math.min(0, xs[0]), g1 = Math.max(xmax, xs[N - 1]), vals = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const x = g0 + ((g1 - g0) * k) / (n - 1);
+    if (x < xs[0]) { vals[k] = ys[0] + m[0] * (x - xs[0]); continue; }
+    if (x > xs[N - 1]) { vals[k] = ys[N - 1] + m[N - 1] * (x - xs[N - 1]); continue; }
+    let i = 0; while (i < N - 2 && x > xs[i + 1]) i++;
+    const t = (x - xs[i]) / hh[i], t2 = t * t, t3 = t2 * t;
+    vals[k] = (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * hh[i] * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * hh[i] * m[i + 1];
+  }
+  const scale = (n - 1) / (g1 - g0);
+  return x => { const t = (x - g0) * scale; if (t <= 0) return vals[0]; if (t >= n - 1) return vals[n - 1]; const i = t | 0; return vals[i] + (vals[i + 1] - vals[i]) * (t - i); };
+}
+function filmicPoints(pi, po, m, toe, shoulder, whiteIn) {
+  const d = 0.12, pts = [[0, 0]];
+  let toeX = Math.max(pi - d - 0.3 * (0.4 + toe), 0.06);
+  const toeLin = po - m * (pi - toeX);
+  pts.push([toeX, toeLin > 0 ? toeLin * (1 - 0.55 * toe) : 0.01]);
+  pts.push([pi - d, po - m * d], [pi, po], [pi + d, po + m * d]);
+  const shX = pi + d + (whiteIn - pi - d) * (0.5 - 0.18 * shoulder), shLin = po + m * (shX - pi), base = po + m * d;
+  pts.push([shX, Math.min(base + (Math.min(shLin, 1) - base) * (1 - 0.45 * shoulder), 0.985)]);
+  pts.push([whiteIn, 1.0], [whiteIn + 0.6, 1.002]);
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) if (pts[i][0] > out[out.length - 1][0] + 1e-4 && pts[i][1] >= out[out.length - 1][1]) out.push(pts[i]);
+  return out;
+}
+const PIVOT_IN = 0.565;
+
+/* ============================================================ develop operations (ported from the desktop engine) */
+function opExposure(img, ev) {
+  if (Math.abs(ev) < 1e-4) return;
+  const k = Math.pow(2, ev / 3), n = img.L.length;
+  for (let i = 0; i < n; i++) { img.L[i] *= k; img.a[i] *= k; img.b[i] *= k; }
+}
+function opFilmic(img, t, ev) {
+  const white = Math.max(1, Math.pow(2, Math.max(ev, 0) / 3));
+  const f = monotoneSpline(filmicPoints(PIVOT_IN, t.pivot, t.contrast, t.toe, t.shoulder, white), 2048, white + 0.7);
+  const follow = t.chroma_follow, n = img.L.length;
+  for (let i = 0; i < n; i++) {
+    const L = img.L[i], Lo = f(L), k = Math.pow(clamp(Lo / Math.max(L, 1e-3), 0.25, 3), follow);
+    img.L[i] = Lo; img.a[i] *= k; img.b[i] *= k;
+  }
+}
+function opLocalTone(img, t) {
+  const hl = t.highlights / 100, sh = t.shadows / 100, wh = t.whites / 100, bl = t.blacks / 100;
+  if (!(hl || sh || wh || bl)) return;
+  const { w, h, L } = img, n = L.length;
+  const base = hl || sh ? guided(L, L, w, h, 0.035, 0.0025) : null;
+  for (let i = 0; i < n; i++) {
+    const l = L[i]; let o = l;
+    if (base) {
+      const b = base[i];
+      if (hl) o += hl * 0.4 * smooth(0.42, 0.98, b);
+      if (sh) o += sh * 0.32 * (1 - smooth(0.04, 0.68, b));
+    }
+    if (wh) o += wh * 0.14 * smooth(0.65, 1, l);
+    if (bl) o += bl * 0.12 * (1 - smooth(0, 0.4, l));
+    const k = Math.sqrt(clamp(o / Math.max(l, 1e-3), 0.3, 2.5));
+    img.a[i] *= k; img.b[i] *= k; L[i] = Math.max(o, 0);
+  }
+}
+function opCurveFade(img, t) {
+  const n = img.L.length, bp = t.black_point || 0, f = t.fade || 0;
+  const cv = t.curve && t.curve.length ? monotoneSpline(t.curve) : null;
+  if (!cv && !bp && !f) return;
+  for (let i = 0; i < n; i++) {
+    let L = img.L[i];
+    if (cv) L = cv(L);
+    if (bp) L = Math.max((L - bp) / (1 - bp), 0);
+    if (f) L += f * (1 - smooth(0, 0.75, L));
+    img.L[i] = L;
+  }
+}
+function opDesatExtremes(img, t) {
+  const hd = t.highlight_desat, sd = t.shadow_desat; if (!(hd || sd)) return;
+  for (let i = 0; i < img.L.length; i++) {
+    const L = img.L[i], k = clamp(1 - hd * smooth(0.72, 1, L) - sd * (1 - smooth(0, 0.3, L)), 0, 1);
+    img.a[i] *= k; img.b[i] *= k;
+  }
+}
+function opPresence(img, p, long) {
+  const cl = p.clarity / 100, tx = p.texture / 100, dh = p.dehaze / 100, mc = p.micro_contrast / 100;
+  if (!(cl || tx || dh || mc)) return;
+  const { w, h, L } = img, n = L.length;
+  if (dh > 0) {   // haze removal approximated as wide-radius local contrast + a little colour and black-point
+    const wide = gauss(L, w, h, long * 0.045);
+    for (let i = 0; i < n; i++) {
+      const l = L[i], d = l - wide[i];
+      L[i] = Math.max(l + dh * 0.55 * d - dh * 0.03 * (1 - smooth(0, 0.35, l)), 0);
+      const k = 1 + dh * 0.12; img.a[i] *= k; img.b[i] *= k;
+    }
+  }
+  if (cl) {
+    const base = guided(L, L, w, h, 0.012, 0.0049);
+    for (let i = 0; i < n; i++) {
+      const l = L[i], mid = 1 - Math.pow(clamp(Math.abs(l - 0.5) * 1.5, 0, 1), 1.6);
+      L[i] = l + cl * 1.2 * (l - base[i]) * (0.35 + 0.65 * mid);
+    }
+  }
+  if (tx) {
+    const bl = gauss(L, w, h, Math.max(0.8, long * 0.001));
+    for (let i = 0; i < n; i++) L[i] += tx * (L[i] - bl[i]);
+  }
+  if (mc) {
+    const bl = gauss(L, w, h, Math.max(0.6, long * 0.0006));
+    for (let i = 0; i < n; i++) { const d = L[i] - bl[i]; L[i] += mc * 1.4 * d * smooth(0.004, 0.03, Math.abs(d)); }
+  }
+}
+
+const BAND_NAMES = ["red", "orange", "yellow", "green", "aqua", "blue", "purple", "magenta"];
+const BAND_HUE = [29, 55, 105, 142, 195, 264, 305, 345];
+function bandWeights(hdeg, out) {   // triangular partition of unity between adjacent band centres
+  const c0 = BAND_HUE[0]; let h = ((hdeg - c0) % 360 + 360) % 360 + c0, i = 0;
+  while (i < 7 && h >= BAND_HUE[i + 1]) i++;
+  const lo = BAND_HUE[i], hi = i < 7 ? BAND_HUE[i + 1] : c0 + 360;
+  let t = (h - lo) / (hi - lo); t = t * t * (3 - 2 * t);
+  out[0] = i; out[1] = (i + 1) % 8; out[2] = t;
+}
+function skinWeight(hdeg, C, L) {
+  const hw = 1 - smooth(18, 35, Math.abs(hdeg - 48));
+  return hw * smooth(0.02, 0.05, C) * (1 - smooth(0.17, 0.24, C)) * smooth(0.3, 0.5, L);
+}
+function opColor(img, c) {
+  const vib = c.vibrance / 100, sat = c.saturation / 100, hsl = c.hsl;
+  const H = BAND_NAMES.map(b => hsl[b].h), S = BAND_NAMES.map(b => hsl[b].s), LM = BAND_NAMES.map(b => hsl[b].l);
+  const hslOn = H.some(Boolean) || S.some(Boolean) || LM.some(Boolean);
+  if (!(vib || sat || hslOn)) return;
+  const n = img.L.length, bw = [0, 0, 0], prot = c.skin_protect || 0;
+  for (let i = 0; i < n; i++) {
+    const a = img.a[i], b = img.b[i], C = Math.hypot(a, b);
+    if (C < 1e-5) continue;
+    let ang = Math.atan2(b, a), hd = ang / deg; if (hd < 0) hd += 360;
+    let k = 1, dh = 0;
+    if (hslOn) {
+      bandWeights(hd, bw); const i0 = bw[0], i1 = bw[1], t = bw[2];
+      dh = (H[i0] * (1 - t) + H[i1] * t) * 30 * deg;
+      k *= 1 + (S[i0] * (1 - t) + S[i1] * t);
+      img.L[i] += (LM[i0] * (1 - t) + LM[i1] * t) * 0.22 * smooth(0, 0.07, C);
+    }
+    if (vib) {
+      const weight = Math.pow(clamp(1 - C / 0.3, 0, 1), 1.4), pr = 1 - prot * skinWeight(hd, C, img.L[i]) * 0.7;
+      k *= vib > 0 ? 1 + vib * 1.3 * weight * pr : 1 + vib * (0.3 + 0.7 * (1 - weight));
+    }
+    if (sat) k *= 1 + sat;
+    k = clamp(k, 0, 4);
+    const C2 = C * k, an = ang + dh;
+    img.a[i] = C2 * Math.cos(an); img.b[i] = C2 * Math.sin(an);
+  }
+}
+function opGrade(img, g) {
+  const zones = ["shadows", "mids", "highlights", "global"];
+  if (!zones.some(z => g[z].s || g[z].l)) return;
+  const bal = (g.balance || 0) * 0.25, blend = clamp(g.blend == null ? 0.5 : g.blend, 0.05, 1), width = 0.12 + 0.35 * blend;
+  const vec = zones.map(z => { const a = g[z].h * deg, s = g[z].s * 0.09; return [s * Math.cos(a), s * Math.sin(a), g[z].l * 0.2]; });
+  const n = img.L.length;
+  for (let i = 0; i < n; i++) {
+    const Lb = img.L[i] - bal, sh = 1 - smooth(0.3 - width * 0.5, 0.3 + width, Lb), hi = smooth(0.6 - width, 0.6 + width * 0.5, Lb), mid = clamp(1 - sh - hi, 0, 1);
+    const w = [sh, mid, hi, 1];
+    let da = 0, db = 0, dl = 0;
+    for (let z = 0; z < 4; z++) { da += w[z] * vec[z][0]; db += w[z] * vec[z][1]; dl += w[z] * vec[z][2]; }
+    img.a[i] += da; img.b[i] += db; img.L[i] += dl;
+  }
+}
+function opBW(img, bw) {
+  const amt = bw.amount; if (amt <= 0) return;
+  const mix = BAND_NAMES.map(b => bw.mix[b]), mixOn = mix.some(Boolean), n = img.L.length, tone = bw.tone, bwv = [0, 0, 0];
+  const toned = tone.s || tone.s2, split = tone.split || tone.s2;
+  const a1 = tone.h * deg, a2 = (tone.h2 == null ? tone.h : tone.h2) * deg;
+  for (let i = 0; i < n; i++) {
+    const a = img.a[i], b = img.b[i], C = Math.hypot(a, b);
+    if (mixOn && C > 1e-5) {
+      let hd = Math.atan2(b, a) / deg; if (hd < 0) hd += 360;
+      bandWeights(hd, bwv);
+      img.L[i] += (mix[bwv[0]] * (1 - bwv[2]) + mix[bwv[1]] * bwv[2]) * 0.27 * smooth(0, 0.1, C) * amt;
+    }
+    let na = a * (1 - amt), nb = b * (1 - amt);
+    if (toned) {
+      const whi = split ? smooth(0.35, 0.9, img.L[i]) : 0, wsh = split ? 1 - whi : 1;
+      if (tone.s) { na += amt * tone.s * 0.05 * Math.cos(a1) * wsh; nb += amt * tone.s * 0.05 * Math.sin(a1) * wsh; }
+      if (tone.s2) { na += amt * tone.s2 * 0.05 * Math.cos(a2) * whi; nb += amt * tone.s2 * 0.05 * Math.sin(a2) * whi; }
+    }
+    img.a[i] = na; img.b[i] = nb;
+  }
+}
+function gainMask(img, ev, mask) {
+  const g = Math.pow(2, ev / 3) - 1;
+  for (let i = 0; i < img.L.length; i++) { const k = 1 + g * mask(i); img.L[i] *= k; img.a[i] *= k; img.b[i] *= k; }
+}
+function opLocal(img, loc, an, skyMask) {
+  const sky = loc.sky, gt = loc.gradient_top, gb = loc.gradient_bottom, subj = loc.subject;
+  const skyOn = Object.values(sky).some(v => Math.abs(v) > 1e-6) && skyMask;
+  if (!(skyOn || gt.exposure || gb.exposure || subj.exposure)) return;
+  const { w, h } = img, n = w * h;
+  if (skyOn) {
+    const m = skyMask;
+    if (sky.exposure) gainMask(img, sky.exposure, i => m[i]);
+    for (let i = 0; i < n; i++) {
+      const mi = m[i]; if (mi < 0.01) continue;
+      if (sky.saturation) { const k = 1 + sky.saturation * mi; img.a[i] *= k; img.b[i] *= k; }
+      if (sky.blue_lum) {
+        const C = Math.hypot(img.a[i], img.b[i]); let hd = Math.atan2(img.b[i], img.a[i]) / deg; if (hd < 0) hd += 360;
+        img.L[i] += sky.blue_lum * 0.2 * (1 - smooth(25, 55, Math.abs(hd - 250))) * smooth(0.01, 0.06, C) * mi;
+      }
+      if (sky.warmth) { img.b[i] += sky.warmth * 0.03 * mi; img.a[i] += sky.warmth * 0.008 * mi; }
+    }
+  }
+  if (gt.exposure) gainMask(img, gt.exposure, i => { const y = ((i / w) | 0) / (h - 1); return (1 - smooth(0, gt.extent, y)) * (skyMask && an.sky > 0.04 ? 0.5 + 0.5 * skyMask[i] : 1); });
+  if (gb.exposure) gainMask(img, gb.exposure, i => smooth(1 - gb.extent, 1, ((i / w) | 0) / (h - 1)));
+  if (subj.exposure) {
+    const faces = an.faces || [];
+    if (faces.length) {
+      gainMask(img, subj.exposure, i => {
+        const x = i % w, y = (i / w) | 0; let m = 0;
+        for (const f of faces) { const cx = (f[0] + f[2] / 2) * w, cy = (f[1] + f[3] / 2) * h, r = Math.max(f[2] * w, f[3] * h) * 1.6; const d2 = ((x - cx) ** 2 + (y - cy) ** 2) / (r * r); m = Math.max(m, Math.exp(-d2 * 1.6)); }
+        return m;
+      });
+    } else {
+      const rx = w * subj.radius * 1.4, ry = h * subj.radius * 1.4;
+      gainMask(img, subj.exposure, i => { const x = i % w, y = (i / w) | 0; return Math.exp((-(((x - w / 2) / rx) ** 2 + ((y - h * 0.48) / ry) ** 2)) * 1.2); });
+    }
+  }
+}
+function opEffects(img, e, long, seed) {
+  const { w, h } = img, n = w * h, hal = e.halation, glow = e.glow;
+  if (glow.amount > 0) {
+    const src = new Float32Array(n); for (let i = 0; i < n; i++) src[i] = Math.max(img.L[i] - 0.45, 0);
+    const bl = gauss(src, w, h, glow.radius * long);
+    for (let i = 0; i < n; i++) img.L[i] += glow.amount * 0.55 * bl[i];
+  }
+  if (hal.amount > 0) {
+    const thr = hal.threshold, src = new Float32Array(n);
+    for (let i = 0; i < n; i++) src[i] = smooth(thr - 0.08, thr + 0.06, img.L[i]) * (0.4 + 0.6 * img.L[i]);
+    const b1 = gauss(src, w, h, hal.radius * long), b2 = gauss(src, w, h, hal.radius * long * 3.2), ang = hal.hue * deg, ca = Math.cos(ang), sa = Math.sin(ang);
+    for (let i = 0; i < n; i++) { const gm = b1[i] * 0.65 + b2[i] * 0.5; img.L[i] += hal.amount * 0.22 * gm; img.a[i] += hal.amount * 0.2 * gm * ca; img.b[i] += hal.amount * 0.2 * gm * sa; }
+  }
+  const v = e.vignette;
+  if (Math.abs(v.amount) > 1e-3 && v.amount > 0) {
+    const mid = v.midpoint, fe = clamp(v.feather, 0.05, 1);
+    for (let y = 0; y < h; y++) {
+      const yy = (y / (h - 1)) * 2 - 1;
+      for (let x = 0; x < w; x++) {
+        const xx = (x / (w - 1)) * 2 - 1, d = Math.sqrt(xx * xx + yy * yy) / Math.SQRT2;
+        let m = smooth(mid - 0.5 * fe * mid - 0.02, mid + fe * (1 - mid) + 0.1, d); m = m * m * 0.5 + m * 0.5;
+        const k = Math.pow(1 - 0.75 * v.amount * m, 0.8), i = y * w + x;
+        img.L[i] *= k; img.a[i] *= k; img.b[i] *= k;
+      }
+    }
+  }
+  const g = e.grain;
+  if (g.amount > 0) {
+    let s = (seed || 7) >>> 0;
+    const rnd = () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const size = Math.max(0.6, g.size * (long / 4000) * 1.15), gw = Math.max(8, Math.round(w / size)), gh = Math.max(8, Math.round(h / size));
+    let nz = new Float32Array(gw * gh);
+    for (let i = 0; i < nz.length; i++) nz[i] = Math.sqrt(-2 * Math.log(rnd() + 1e-9)) * Math.cos(2 * Math.PI * rnd());
+    nz = gauss(nz, gw, gh, 0.6 + 0.8 * (1 - g.roughness));
+    let sd = 0; for (let i = 0; i < nz.length; i++) sd += nz[i] * nz[i]; sd = Math.sqrt(sd / nz.length) || 1;
+    const full = gw === w && gh === h ? nz : upBilinear(nz, gw, gh, w, h);
+    for (let i = 0; i < n; i++) { const L = img.L[i], prof = 0.28 + 0.72 * Math.pow(clamp(4 * L * (1 - L), 0, 1), 0.8); img.L[i] = L + g.amount * 0.055 * (full[i] / sd) * prof; }
+  }
+}
+function opSharpen(img, d, long) {
+  const amt = d.sharpen; if (amt <= 0) return;
+  const { w, h, L } = img, n = L.length, radius = clamp(0.5 + long * 0.0003, 0.5, 1.7);
+  const bl = gauss(L, w, h, radius), det = new Float32Array(n);
+  for (let i = 0; i < n; i++) det[i] = L[i] - bl[i];
+  const ab = new Float32Array(n); for (let i = 0; i < n; i++) ab[i] = Math.abs(det[i]);
+  const mag = gauss(ab, w, h, 1.5), m = d.sharpen_masking;
+  for (let i = 0; i < n; i++) {
+    const edge = 1 - m + m * smooth(0.003, 0.03 + 0.03 * m, mag[i]);
+    L[i] += clamp(det[i] * edge, -0.07, 0.07) * amt * 1.6;
+  }
+}
+
+
+/* ============================================================ geometry: auto-upright and horizon levelling */
+/** Fit y = s*x + r with iteratively re-weighted least squares (robust to clutter). */
+function robustFit(xs, ys, ws) {
+  let wt = ws.slice(), s = 0, r = 0, spread = 1;
+  for (let it = 0; it < 5; it++) {
+    let sw = 0, mx = 0, my = 0; for (let i = 0; i < xs.length; i++) { sw += wt[i]; mx += wt[i] * xs[i]; my += wt[i] * ys[i]; }
+    mx /= sw; my /= sw; let sxx = 0, sxy = 0; for (let i = 0; i < xs.length; i++) { sxx += wt[i] * (xs[i] - mx) ** 2; sxy += wt[i] * (xs[i] - mx) * (ys[i] - my); }
+    s = sxx > 1e-12 ? sxy / sxx : 0; r = my - s * mx;
+    const res = xs.map((x, i) => Math.abs(ys[i] - (s * x + r))), srt = res.slice().sort((a, b) => a - b);
+    spread = srt[srt.length >> 1]; const sc = Math.max(spread * 1.4826, 1e-4);
+    for (let i = 0; i < xs.length; i++) wt[i] = ws[i] / (1 + (res[i] / (2 * sc)) ** 2);
+  }
+  return { s, r, spread };
+}
+function estimateGeometry(L, w, h) {
+  const sm = gauss(L, w, h, 1.0), vx = [], vm = [], vw = [], hang = [], hw = [];
+  for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) {
+    const i = y * w + x, gx = (sm[i + 1] - sm[i - 1]) / 2, gy = (sm[i + w] - sm[i - w]) / 2, mag = Math.hypot(gx, gy);
+    if (mag < 0.035) continue;
+    if (Math.abs(gy) < Math.abs(gx) * 0.25) { vx.push(x - w / 2); vm.push(-gy / gx); vw.push(mag * mag); }
+    else if (Math.abs(gx) < Math.abs(gy) * 0.1) { hang.push(Math.atan(-gx / gy) / deg); hw.push(mag * mag); }
+  }
+  const out = { rot: 0, vkey: 0, conf: 0, horizon: null };
+  if (vx.length > 600) {
+    const f = robustFit(vx, vm, vw);
+    out.rot = Math.atan(f.r) / deg; out.vkey = f.s;
+    out.conf = clamp(1 - f.spread / 0.06, 0, 1) * clamp(vx.length / (0.04 * w * h), 0.2, 1);
+    out.vkeyN = clamp(f.s * h, -0.3, 0.3);   // dimensionless (slope change across the frame height), limited to a sane amount
+  }
+  const sel = []; for (let i = 0; i < hang.length; i++) if (Math.abs(hang[i]) < 6) sel.push(i);
+  if (sel.length / 2 >= 0.35 * Math.max(w, h)) {
+    const order = sel.slice().sort((a, b) => hang[a] - hang[b]); let tot = 0; for (const i of order) tot += hw[i];
+    let acc = 0, med = 0; for (const i of order) { acc += hw[i]; if (acc >= tot / 2) { med = hang[i]; break; } }
+    let mad = 0, wsum = 0; for (const i of sel) { mad += hw[i] * Math.abs(hang[i] - med); wsum += hw[i]; }
+    if (mad / wsum < 1.2) out.horizon = med;
+  }
+  return out;
+}
+/** Rotate + keystone a bitmap and crop to the largest clean rectangle (inverse-mapped, bilinear). */
+function warpImage(id, rotDeg, vkeyNorm) {
+  const w = id.width, h = id.height, vk = vkeyNorm / h, th = rotDeg * deg, c = Math.cos(th), s = Math.sin(th);
+  // H = T^-1 * R * K * T (centre-referenced), K = [[1,0,0],[0,1,0],[0,vk,1]]
+  const mul = (A, B) => A.map((r, i) => B[0].map((_, j) => r.reduce((a, _, k) => a + A[i][k] * B[k][j], 0)));
+  const T = [[1, 0, -w / 2], [0, 1, -h / 2], [0, 0, 1]], Ti = [[1, 0, w / 2], [0, 1, h / 2], [0, 0, 1]];
+  const H = mul(Ti, mul([[c, -s, 0], [s, c, 0], [0, 0, 1]], mul([[1, 0, 0], [0, 1, 0], [0, vk, 1]], T)));
+  const det = H[0][0] * (H[1][1] * H[2][2] - H[1][2] * H[2][1]) - H[0][1] * (H[1][0] * H[2][2] - H[1][2] * H[2][0]) + H[0][2] * (H[1][0] * H[2][1] - H[1][1] * H[2][0]);
+  const inv = [
+    [(H[1][1] * H[2][2] - H[1][2] * H[2][1]) / det, (H[0][2] * H[2][1] - H[0][1] * H[2][2]) / det, (H[0][1] * H[1][2] - H[0][2] * H[1][1]) / det],
+    [(H[1][2] * H[2][0] - H[1][0] * H[2][2]) / det, (H[0][0] * H[2][2] - H[0][2] * H[2][0]) / det, (H[0][2] * H[1][0] - H[0][0] * H[1][2]) / det],
+    [(H[1][0] * H[2][1] - H[1][1] * H[2][0]) / det, (H[0][1] * H[2][0] - H[0][0] * H[2][1]) / det, (H[0][0] * H[1][1] - H[0][1] * H[1][0]) / det]];
+  const proj = (x, y) => { const z = H[2][0] * x + H[2][1] * y + H[2][2]; return [(H[0][0] * x + H[0][1] * y + H[0][2]) / z, (H[1][0] * x + H[1][1] * y + H[1][2]) / z]; };
+  const quad = [[0, 0], [w, 0], [w, h], [0, h]].map(p => proj(p[0], p[1]));
+  const inside = (px, py) => { let sg = 0; for (let i = 0; i < 4; i++) { const a = quad[i], b = quad[(i + 1) % 4], cr = (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]); if (cr !== 0) { if (sg && Math.sign(cr) !== sg) return false; sg = Math.sign(cr); } } return true; };
+  const fits = k => [[-1, -1], [1, -1], [1, 1], [-1, 1]].every(q => inside(w / 2 + q[0] * k * w / 2, h / 2 + q[1] * k * h / 2));
+  let k = 1; if (!fits(1)) { let lo = 0.3, hi = 1; for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; } k = lo * 0.995; }
+  const cw = Math.max(8, Math.floor(w * k)), ch = Math.max(8, Math.floor(h * k)), x0 = Math.ceil(w / 2 - cw / 2), y0 = Math.ceil(h / 2 - ch / 2);
+  const out = new ImageData(cw, ch), d = id.data, o = out.data;
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const X = x + x0, Y = y + y0, z = inv[2][0] * X + inv[2][1] * Y + inv[2][2];
+    const sx = clamp((inv[0][0] * X + inv[0][1] * Y + inv[0][2]) / z, 0, w - 1.001), sy = clamp((inv[1][0] * X + inv[1][1] * Y + inv[1][2]) / z, 0, h - 1.001);
+    const ix = sx | 0, iy = sy | 0, fx = sx - ix, fy = sy - iy, p00 = (iy * w + ix) * 4, p10 = p00 + 4, p01 = p00 + w * 4, p11 = p01 + 4, q = (y * cw + x) * 4;
+    for (let c2 = 0; c2 < 3; c2++) o[q + c2] = (d[p00 + c2] * (1 - fx) + d[p10 + c2] * fx) * (1 - fy) + (d[p01 + c2] * (1 - fx) + d[p11 + c2] * fx) * fy;
+    o[q + 3] = 255;
+  }
+  return out;
+}
+function applyGeometry(id, g, geo) {
+  const up = g.auto_upright || 0, hz = g.auto_horizon || 0;
+  if (!(up || hz) || !geo) return id;
+  let rot = 0, vk = 0;
+  if (up > 0 && geo.conf > 0.25) { const k = Math.min(1, geo.conf * 1.4); rot = up * clamp(geo.rot, -7, 7) * k; vk = up * geo.vkeyN * k; }
+  else if (hz > 0 && geo.horizon != null) rot = hz * clamp(-geo.horizon, -5, 5);
+  if (Math.abs(rot) < 0.05 && Math.abs(vk) < 1e-3) return id;
+  return warpImage(id, rot, vk);
+}
+
+/* ============================================================ analysis (on a small proxy) */
+function percentiles(arr, qs, lo, hi) {
+  const bins = 1024, hist = new Uint32Array(bins), sc = (bins - 1) / (hi - lo);
+  for (let i = 0; i < arr.length; i++) hist[clamp(Math.round((arr[i] - lo) * sc), 0, bins - 1)]++;
+  const out = {}, tot = arr.length; let acc = 0, qi = 0;
+  const sorted = qs.slice().sort((x, y) => x - y);
+  for (let b = 0; b < bins && qi < sorted.length; b++) { acc += hist[b]; while (qi < sorted.length && acc / tot * 100 >= sorted[qi]) { out[sorted[qi]] = lo + b / sc; qi++; } }
+  for (; qi < sorted.length; qi++) out[sorted[qi]] = hi;
+  return out;
+}
+function analyze(id) {
+  const lab = toLab(id), { w, h, L, a, b } = lab, n = w * h, d = id.data;
+  const Y = new Float32Array(n); let clip = 0, sumC = 0, sk = 0;
+  const C = new Float32Array(n);
+  for (let i = 0, j = 0; i < n; i++, j += 4) {
+    Y[i] = 0.2126 * LIN[d[j]] + 0.7152 * LIN[d[j + 1]] + 0.0722 * LIN[d[j + 2]];
+    if (d[j] >= 253 || d[j + 1] >= 253 || d[j + 2] >= 253) clip++;
+    C[i] = Math.hypot(a[i], b[i]); sumC += C[i];
+  }
+  const qs = [0.5, 2, 10, 25, 50, 75, 90, 98, 99.5];
+  const yp = percentiles(Y, qs, 0, 1), lp = percentiles(L, qs, 0, 1);
+  const an = { w, h, lp, yp, dr: Math.log2(Math.max(yp[99.5], 1e-4) / Math.max(yp[0.5], 1e-5)), clip: clip / n, chroma: sumC / n };
+  const cp = percentiles(C, [90], 0, 0.4); an.mono = cp[90] < 0.012;
+  // colour cast from near-neutral mid-tones
+  const sa = [], sb = [];
+  for (let i = 0; i < n; i++) if (C[i] < 0.035 && L[i] > 0.35 && L[i] < 0.92) { sa.push(a[i]); sb.push(b[i]); }
+  an.cast = 0; an.wb = [0, 0];
+  if (sa.length > 150) {
+    const med = v => { v.sort((x, y) => x - y); return v[v.length >> 1]; };
+    const ma = med(sa), mb = med(sb), mag = Math.hypot(ma, mb), frac = sa.length / n;
+    let va = 0, vb = 0; for (let i = 0; i < sa.length; i++) { va += (sa[i] - ma) ** 2; vb += (sb[i] - mb) ** 2; }
+    const spread = Math.hypot(Math.sqrt(va / sa.length), Math.sqrt(vb / sa.length));
+    an.cast = clamp(frac * 5, 0, 1) * clamp(1 - spread / 0.05, 0, 1) * clamp(1 - (mag - 0.008) / 0.02, 0.05, 1);
+    an.wb = solveWB(ma, mb);
+  }
+  // skin share and a rough "is there a face-sized skin blob" test
+  let skin = 0; for (let i = 0; i < n; i++) { let hd = Math.atan2(b[i], a[i]) / deg; if (hd < 0) hd += 360; if (skinWeight(hd, C[i], L[i]) > 0.5) skin++; }
+  an.skin = skin / n;
+  an.faces = detectFaces(L, w, h);
+  an.geo = estimateGeometry(L, w, h);
+  // sky: smooth blue/overcast region touching the top edge
+  const sm = gauss(L, w, h, 1.5), cand = new Uint8Array(n);
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x, gx = sm[i + 1] - sm[i - 1], gy = sm[i + w] - sm[i - w], g = Math.hypot(gx, gy) * 4;   // Sobel-equivalent scale
+    if (y > h * 0.7 || g > 0.045) continue;
+    let hd = Math.atan2(b[i], a[i]) / deg; if (hd < 0) hd += 360;
+    const blue = hd > 205 && hd < 285 && C[i] > 0.025 && L[i] > 0.45, over = L[i] > 0.78 && C[i] < 0.035 && g < 0.03;
+    if (blue || over) cand[i] = 1;
+  }
+  const seen = new Uint8Array(n), stack = [];
+  for (let x = 0; x < w; x++) for (let y = 0; y < Math.max(2, Math.round(h * 0.04)); y++) { const i = y * w + x; if (cand[i] && !seen[i]) { seen[i] = 1; stack.push(i); } }
+  let area = 0;
+  while (stack.length) {
+    const i = stack.pop(); area++; const x = i % w, y = (i / w) | 0;
+    for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1]) if (j >= 0 && cand[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+  }
+  an.sky = area / n; an.skyMask = null;
+  if (an.sky >= 0.04) { const m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = seen[i]; an.skyMask = { d: gauss(m, w, h, Math.max(2, w / 150)), w, h }; } else an.sky = 0;
+  // line structure: share of strong edges that are vertical / horizontal (architecture cue)
+  let strong = 0, vert = 0, horiz = 0;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x, gx = L[i + 1] - L[i - 1], gy = L[i + w] - L[i - w], g = Math.hypot(gx, gy);
+    if (g < 0.12) continue; strong++;
+    const t = Math.abs(Math.atan2(gy, gx)) / deg; // 0/180 => vertical edge, 90 => horizontal edge
+    if (t < 9 || t > 171) vert++; else if (Math.abs(t - 90) < 9) horiz++;
+  }
+  an.edge = strong / n; an.vert = strong ? vert / strong : 0; an.horiz = strong ? horiz / strong : 0;
+  an.night = yp[50] < 0.012 && yp[99.5] > 8 * yp[50];
+  return an;
+}
+/** Viola-Jones face detector running OpenCV's Haar cascade (frontal faces), ported to JavaScript. */
+function detectFaces(L, w, h) {
+  const C = window.__FACE__; if (!C) return [];
+  const g = new Float32Array(w * h), hist = new Uint32Array(256);
+  for (let i = 0; i < g.length; i++) { const v = clamp(Math.round(L[i] * 255), 0, 255); g[i] = v; hist[v]++; }
+  const cdf = new Float32Array(256); let acc = 0, cmin = 0; for (let i = 0; i < 256; i++) { acc += hist[i]; cdf[i] = acc; if (!cmin && acc) cmin = acc; }
+  for (let i = 0; i < g.length; i++) g[i] = Math.round(((cdf[g[i]] - cmin) / Math.max(g.length - cmin, 1)) * 255);   // equalise like OpenCV's pipeline
+  const win = C.w, minFace = Math.max(28, w / 22), hits = [];
+  for (let scale = 1; win * scale <= Math.min(w, h); scale *= 1.1) {
+    if (win * scale < minFace) continue;
+    const sw = Math.floor(w / scale), sh = Math.floor(h / scale); if (sw < win || sh < win) break;
+    const sm = scale > 1 ? upBilinear(g, w, h, sw, sh) : g, iw = sw + 1, I = new Float64Array(iw * (sh + 1)), Q = new Float64Array(iw * (sh + 1));
+    for (let y = 0; y < sh; y++) { let r = 0, q = 0; for (let x = 0; x < sw; x++) { const v = sm[y * sw + x]; r += v; q += v * v; I[(y + 1) * iw + x + 1] = I[y * iw + x + 1] + r; Q[(y + 1) * iw + x + 1] = Q[y * iw + x + 1] + q; } }
+    const rect = (T, x, y, rw, rh) => T[(y + rh) * iw + x + rw] - T[y * iw + x + rw] - T[(y + rh) * iw + x] + T[y * iw + x];
+    const area = (win - 2) * (win - 2);
+    for (let y = 0; y <= sh - win; y += 2) for (let x = 0; x <= sw - win; x += 2) {
+      const s1 = rect(I, x + 1, y + 1, win - 2, win - 2), s2 = rect(Q, x + 1, y + 1, win - 2, win - 2);
+      let nf = area * s2 - s1 * s1; nf = nf > 0 ? Math.sqrt(nf) : 1; const inv = 1 / nf;
+      let ok = true;
+      for (let si = 0; si < C.stages.length && ok; si++) {
+        const st = C.stages[si]; let sum = 0;
+        for (const wk of st[1]) {
+          const leaves = wk[wk.length - 1]; let idx = 0;
+          do {
+            const nd = wk[idx], fr = C.feats[nd[2]]; let f = 0;
+            for (let k = 0; k < fr.length; k++) { const r = fr[k]; f += r[4] * rect(I, x + r[0], y + r[1], r[2], r[3]); }
+            idx = f * inv < nd[3] ? nd[0] : nd[1];
+          } while (idx > 0);
+          sum += leaves[-idx];
+        }
+        if (sum < st[0]) ok = false;
+      }
+      if (ok) hits.push([x * scale, y * scale, win * scale]);
+    }
+  }
+  // group overlapping hits; keep clusters supported by several windows
+  const cl = [];
+  for (const [x, y, s] of hits) {
+    let c = cl.find(k => Math.abs(k.x - x) < 0.3 * k.s && Math.abs(k.y - y) < 0.3 * k.s && Math.abs(k.s - s) < 0.4 * k.s);
+    if (c) { c.x = (c.x * c.n + x) / (c.n + 1); c.y = (c.y * c.n + y) / (c.n + 1); c.s = (c.s * c.n + s) / (c.n + 1); c.n++; } else cl.push({ x, y, s, n: 1 });
+  }
+  return cl.filter(c => c.n >= 4).map(c => [c.x / w, c.y / h, c.s / w, c.s / h]);
+}
+function sceneKind(an) {
+  if (an.faces && an.faces.length) return "portrait";
+  if (an.night) return "night";
+  if (an.edge > 0.025 && an.vert > 0.2 && an.vert + an.horiz > 0.42) return "architecture";
+  if (an.sky > 0.18) return "landscape";
+  return "street";
+}
+const POOLS = {
+  portrait: ["portrait_natural", "ph_mccurry", "ph_leibovitz", "portrait_warm_film", "portrait_bw", "ph_lindbergh", "portrait_moody", "portrait_airy"],
+  landscape: ["land_natural", "ph_adams", "land_golden", "land_vivid", "ph_salgado", "film_velvia", "land_moody", "ph_sugimoto"],
+  architecture: ["arch_clean", "ph_stoller", "arch_bw", "ph_shulman", "arch_dramatic", "ph_baan", "arch_minimal", "ph_binet"],
+  night: ["street_neon_night", "night_city", "film_cinestill", "ph_hido", "bw_noir", "cine_teal_orange"],
+  street: ["street_classic", "street_bw_trix", "ph_hcb", "ph_moriyama", "ph_herzog", "ph_leiter", "street_gritty", "ph_webb", "film_portra", "film_kodachrome"],
+};
+function recommend(an, forced) {
+  const kind = forced || sceneKind(an), out = ["natural"];
+  for (const id of POOLS[kind]) if (!out.includes(id)) out.push(id);
+  let list = out.slice(0, 8);
+  if (an.mono) list = list.filter(id => id === "natural" || DATA.byId[id].bw).concat(DATA.styles.filter(s => s.bw && !list.includes(s.id)).map(s => s.id)).slice(0, 8);
+  return { kind, list };
+}
+
+/* ============================================================ the editor's brain: style + measurements -> recipe */
+function tonalStats(proxy, r) {
+  const img = { w: proxy.w, h: proxy.h, L: Float32Array.from(proxy.L), a: Float32Array.from(proxy.a), b: Float32Array.from(proxy.b) };
+  const ev = r.exposure.ev;
+  opExposure(img, ev); opFilmic(img, r.tone, ev); opLocalTone(img, r.tone); opCurveFade(img, r.tone);
+  const L = img.L, n = L.length;
+  for (let i = 0; i < n; i++) { const v = L[i]; L[i] = v > 0.93 ? 0.93 + 0.07 * Math.tanh((v - 0.93) / 0.07) : v < 0 ? 0 : v; }
+  const p = percentiles(L, [0.5, 2, 10, 25, 50, 75, 90, 99, 99.5], 0, 1.02); let c = 0;
+  for (let i = 0; i < n; i++) if (L[i] > 0.985) c++;
+  return { p05: p[0.5], p10: p[10], p995: p[99.5], clip: c / n, key: 0.25 * p[25] + 0.5 * p[50] + 0.25 * p[75] };
+}
+function solveTone(proxy, r, targets, an) {
+  const notes = [], keep = Math.max(targets.preserve_key == null ? 0.25 : targets.preserve_key, an.night ? 0.7 : 0);
+  let st = tonalStats(proxy, r);
+  const targetKey = targets.median * (1 - keep) + st.key * keep, base = r.exposure.ev;
+  let lo = -1.5, hi = 1.5;
+  for (let i = 0; i < 11; i++) { const mid = (lo + hi) / 2; r.exposure.ev = base + mid; if (tonalStats(proxy, r).key < targetKey) lo = mid; else hi = mid; }
+  r.exposure.ev = base + (lo + hi) / 2; st = tonalStats(proxy, r);
+  notes.push(`Exposure ${r.exposure.ev >= 0 ? "+" : ""}${r.exposure.ev.toFixed(2)} EV to reach the look's brightness`);
+  const maxClip = targets.max_clip == null ? 0.004 : targets.max_clip, hiT = targets.hi == null ? 0.96 : targets.hi, hl0 = r.tone.highlights, floorHl = hl0 - 45;
+  for (let i = 0; i < 8; i++) {
+    if (st.clip <= maxClip && st.p995 <= hiT + 0.02) break;
+    if (r.tone.highlights > floorHl) r.tone.highlights -= 12;
+    else if (r.exposure.ev > base - 0.6) r.exposure.ev -= 0.12; else break;
+    st = tonalStats(proxy, r);
+  }
+  if (r.tone.highlights !== hl0) notes.push(`Highlights ${Math.round(r.tone.highlights)} to protect bright areas`);
+  const loT = targets.black == null ? 0.06 : targets.black, sh0 = r.tone.shadows, cap = sh0 + 35;
+  if (targets.lift_shadows !== false) {
+    for (let i = 0; i < 6; i++) { if (st.p10 >= loT * 2.2 || r.tone.shadows >= cap) break; r.tone.shadows += 12; st = tonalStats(proxy, r); }
+    if (r.tone.shadows !== sh0) notes.push(`Shadows ${Math.round(r.tone.shadows)} to open up detail`);
+  }
+  if (r.tone.fade <= 0.001 && targets.auto_black !== false) {
+    const bp = Math.min(Math.max(0, st.p05 - (targets.black == null ? 0.02 : targets.black)), 0.12);
+    if (bp > 0.004) { r.tone.black_point += bp * 0.9; notes.push("Black point set for clean blacks"); }
+  }
+  return notes;
+}
+function planRecipe(an, style, proxy) {
+  const r = clone(style.recipe), ad = style.adapt || {}, notes = [];
+  r.presence.dehaze *= 0.6; r.tone.shadows *= 0.6; r.presence.clarity *= 0.85;      // 8-bit source: gentler
+  r.detail.sharpen *= 0.5;
+  if (an.mono && r.color.bw.amount <= 0) { r.color.vibrance = 0; r.color.saturation = 0; }
+  if (r.wb.auto > 0 && an.cast > 0.15) {
+    const k = r.wb.auto * an.cast;
+    r.wb.mired += clamp(an.wb[0] * k, -r.wb.auto_max_mired, r.wb.auto_max_mired); r.wb.tint += clamp(an.wb[1] * k, -25, 25);
+    notes.push("White balance nudged toward neutral");
+  }
+  const sc = clamp((an.dr - 8.5) / 4, -1, 1);
+  if (sc < -0.2 && r.tone.contrast >= 1) { r.tone.contrast *= 1 + 0.18 * -sc; notes.push("Flat scene: added contrast"); }
+  else if (sc > 0.35) { r.tone.contrast *= 1 - 0.08 * sc; r.tone.shadows += 10 * sc; r.tone.highlights -= 10 * sc; notes.push("High-contrast scene: compressed the range"); }
+  if (an.chroma > 0.11) { r.color.vibrance *= 0.6; if (r.color.saturation > 0) r.color.saturation *= 0.6; }
+  else if (an.chroma < 0.035 && !an.mono && r.color.bw.amount < 0.5) r.color.vibrance *= 1.25;
+  if (r.color.bw.amount <= 0 && an.skin > 0.08) r.color.skin_protect = Math.max(r.color.skin_protect, 0.8);
+  if (!an.skyMask) for (const k in r.local.sky) r.local.sky[k] = 0; else notes.push("Sky found: recovering it separately");
+  if (!(an.faces && an.faces.length)) r.local.skin_smooth = 0;
+  if (an.night) { r.tone.shadows = Math.min(r.tone.shadows, 15); notes.push("Night scene: keeping the darkness"); }
+  notes.push(...solveTone(proxy, r, style.targets || { median: 0.52 }, an));
+  return { r, notes };
+}
+
+/* ============================================================ render a recipe on an ImageData */
+function wbFor(r, an) { return Math.abs(r.wb.mired) > 0.05 || Math.abs(r.wb.tint) > 0.05 ? wbGains(r.wb.mired, r.wb.tint) : null; }
+function develop(id, r, an, fullLong) {
+  id = applyGeometry(id, r.geometry, an.geo);
+  const lab = toLab(id, wbFor(r, an)), long = Math.max(lab.w, lab.h);
+  let skyMask = null;
+  if (an.skyMask) { skyMask = upBilinear(an.skyMask.d, an.skyMask.w, an.skyMask.h, lab.w, lab.h); skyMask = guided(lab.L, skyMask, lab.w, lab.h, 0.006, 0.0001); for (let i = 0; i < skyMask.length; i++) skyMask[i] = clamp(skyMask[i], 0, 1); }
+  const ev = r.exposure.ev;
+  opExposure(lab, ev); opFilmic(lab, r.tone, ev); opLocalTone(lab, r.tone);
+  opPresence(lab, r.presence, long);
+  opColor(lab, r.color);
+  opLocal(lab, r.local, an, skyMask);
+  opGrade(lab, r.color.grade); opBW(lab, r.color.bw); opCurveFade(lab, r.tone); opDesatExtremes(lab, r.tone);
+  opEffects(lab, r.effects, long, 7);
+  opSharpen(lab, r.detail, long);
+  return lab;
+}
+function renderToCanvas(canvas, lab, dither) {
+  canvas.width = lab.w; canvas.height = lab.h;
+  const ctx = canvas.getContext("2d"), out = ctx.createImageData(lab.w, lab.h);
+  toBytes(lab, out.data, dither); ctx.putImageData(out, 0, 0);
+}
+
+/* ============================================================ app state & image plumbing */
+const DATA = window.__DATA__; DATA.byId = Object.fromEntries(DATA.styles.map(s => [s.id, s]));
+const state = { photos: [], cur: -1, chosen: null, token: 0 };
+const MAX_EXPORT = 2600, PREVIEW = 1300, THUMB = 420;
+
+function sizeTo(bmp, maxSide) {
+  const s = Math.min(1, maxSide / Math.max(bmp.width, bmp.height)), w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d", { willReadFrequently: true }); x.imageSmoothingQuality = "high"; x.drawImage(bmp, 0, 0, w, h);
+  return { canvas: c, id: x.getImageData(0, 0, w, h) };
+}
+async function loadFile(file) {
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }
+  catch { const url = URL.createObjectURL(file); bmp = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
+  const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight;
+  return { name: (file.name || "photo").replace(/\.[^.]+$/, ""), bmp, w, h };
+}
+async function addPhotos(files) {
+  const list = [...files].filter(f => f.type.startsWith("image/") || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name));
+  if (!list.length) return toast("Pick photos (JPEG, HEIC or PNG).");
+  for (const f of list) {
+    try {
+      const src = await loadFile(f);
+      await addPhotoFrom(src);
+    } catch (e) { toast(`Could not open ${f.name || "that file"}.`); }
+  }
+}
+async function addPhotoFrom(src) {
+  const prev = sizeTo(src.bmp, PREVIEW), thumb = sizeTo(src.bmp, THUMB);
+  const p = { name: src.name, bmp: src.bmp, prev, thumb, an: null, rec: null, tiles: new Map(), chosen: null, cache: new Map(), plans: new Map() };
+  state.photos.push(p);
+  showApp();
+  selectPhoto(state.photos.length - 1);
+}
+function showApp() { $("#hero").hidden = true; $("#app").hidden = false; $("#bar").hidden = false; $("#addBtn").hidden = false; }
+
+/* ------------------------------------------------------------ photo strip + selection */
+function renderStrip() {
+  const s = $("#strip"); s.innerHTML = "";
+  state.photos.forEach((p, i) => {
+    const b = document.createElement("button"); b.className = i === state.cur ? "sel" : ""; b.setAttribute("aria-label", "Photo " + (i + 1));
+    const c = document.createElement("canvas"); c.width = 116; c.height = 88; const x = c.getContext("2d");
+    const t = p.thumb.canvas, sc = Math.max(116 / t.width, 88 / t.height), dw = t.width * sc, dh = t.height * sc;
+    x.drawImage(t, (116 - dw) / 2, (88 - dh) / 2, dw, dh); b.appendChild(c);
+    b.onclick = () => selectPhoto(i); s.appendChild(b);
+  });
+  if (state.photos.length < 2) s.hidden = true; else s.hidden = false;
+}
+function drawOriginal() { const p = state.photos[state.cur]; const m = $("#main"); m.width = p.prev.canvas.width; m.height = p.prev.canvas.height; m.getContext("2d").drawImage(p.prev.canvas, 0, 0); $("#badge").textContent = "Original"; }
+async function selectPhoto(i) {
+  state.cur = i; state.token++; const p = state.photos[i];
+  renderStrip(); $("#looks").innerHTML = ""; $("#search").value = "";
+  state.chosen = p.chosen; updateSave();
+  if (p.chosen && p.cache.has(p.chosen)) { drawCanvas(p.cache.get(p.chosen), DATA.byId[p.chosen].name); } else drawOriginal();
+  $("#lookTitle").textContent = "Best for this photo"; $("#lookSub").textContent = "Looking at your photo…";
+  await tick();
+  if (!p.an) { p.an = analyze(p.thumb.id); p.rec = recommend(p.an); }
+  buildKinds(p); buildLooks(p); renderLooks(p);
+}
+const KIND_LABEL = { auto: "Auto", portrait: "Portrait", landscape: "Landscape", architecture: "Architecture", night: "Night", street: "Street" };
+function buildKinds(p) {
+  const box = $("#kinds"); box.innerHTML = "";
+  for (const k of Object.keys(KIND_LABEL)) {
+    const b = document.createElement("button"); b.textContent = KIND_LABEL[k]; b.className = (p.kindPick || "auto") === k ? "on" : "";
+    b.onclick = () => { p.kindPick = k; p.rec = recommend(p.an, k === "auto" ? null : k); buildKinds(p); buildLooks(p); renderLooks(p); };
+    box.appendChild(b);
+  }
+}
+function buildLooks(p) {
+  const root = $("#looks"); root.innerHTML = ""; p.tiles = new Map(); state.token++;
+  const kinds = { portrait: "a portrait", landscape: "a landscape", architecture: "architecture", night: "a night scene", street: "a street or general scene" };
+  $("#lookSub").textContent = `${p.kindPick && p.kindPick !== "auto" ? "Showing looks for" : "Looks like"} ${kinds[p.rec.kind]}. Tap a look to see it on your photo.`;
+  const mk = (title, ids, cls) => {
+    if (!ids.length) return;
+    const h = document.createElement("div"); h.className = "cat mono"; h.textContent = title; if (cls) h.dataset.rec = "1"; root.appendChild(h);
+    const g = document.createElement("div"); g.className = "tiles"; root.appendChild(g);
+    for (const id of ids) { const t = makeTile(p, DATA.byId[id]); g.appendChild(t); }
+  };
+  mk("Best for this photo", p.rec.list, true);
+  const cats = {}; DATA.styles.forEach(s => (cats[s.category] = cats[s.category] || []).push(s.id));
+  for (const [c, ids] of Object.entries(cats)) mk(c, ids);
+}
+function makeTile(p, s) {
+  const b = document.createElement("button"); b.className = "tile"; b.dataset.id = s.id;
+  const parts = s.name.split(" – ");
+  b.innerHTML = `<div class="ph"><canvas width="320" height="240"></canvas></div><b></b><small></small>`;
+  $("b", b).textContent = s.photographer ? parts[0] : parts[1] || parts[0];
+  $("small", b).textContent = s.photographer ? parts[1] || "" : s.category;
+  b.dataset.q = (s.name + " " + s.category + " " + s.description + " " + s.keywords.join(" ")).toLowerCase();
+  b.onclick = () => choose(s.id);
+  (p.tiles.get(s.id) || p.tiles.set(s.id, []).get(s.id)).push(b);
+  if (p.chosen === s.id) b.classList.add("sel");
+  return b;
+}
+async function renderLooks(p) {
+  const tok = state.token, order = [...p.rec.list, ...DATA.styles.map(s => s.id).filter(id => !p.rec.list.includes(id))];
+  const proxy = toLab(p.thumb.id), small = shrinkLab(proxy, 190);
+  for (const id of order) {
+    if (tok !== state.token) return;
+    if (!p.plans.has(id)) {
+      const style = DATA.byId[id], { r, notes } = planRecipe(p.an, style, small);
+      p.plans.set(id, { r, notes });
+    }
+    const { r } = p.plans.get(id), lab = develop(p.thumb.id, r, p.an, p.thumb.canvas.width);
+    for (const t of p.tiles.get(id) || []) { renderToCanvas($("canvas", t), lab, false); t.classList.add("done"); }
+    if (id === p.rec.list[0] || (p.tiles.get(id) || []).length) await tick();
+  }
+}
+function shrinkLab(lab, maxDim) {
+  const f = Math.max(1, Math.floor(Math.max(lab.w, lab.h) / maxDim)); if (f === 1) return lab;
+  const L = downBlock(lab.L, lab.w, lab.h, f), A = downBlock(lab.a, lab.w, lab.h, f), B = downBlock(lab.b, lab.w, lab.h, f);
+  return { w: L.w, h: L.h, L: L.d, a: A.d, b: B.d };
+}
+
+/* ------------------------------------------------------------ choosing + saving */
+function drawCanvas(src, label) { const m = $("#main"); m.width = src.width; m.height = src.height; m.getContext("2d").drawImage(src, 0, 0); $("#badge").textContent = label.replace(/^[^–]+– /, ""); }
+async function choose(id) {
+  const p = state.photos[state.cur]; p.chosen = id; state.chosen = id;
+  document.querySelectorAll(".tile").forEach(t => t.classList.toggle("sel", t.dataset.id === id));
+  updateSave();
+  if (p.cache.has(id)) return drawCanvas(p.cache.get(id), DATA.byId[id].name);
+  busy(true, "Developing…"); await tick(); await tick();
+  const c = document.createElement("canvas");
+  const plan = p.plans.get(id) || planRecipe(p.an, DATA.byId[id], shrinkLab(toLab(p.thumb.id), 190));
+  p.plans.set(id, plan);
+  renderToCanvas(c, develop(p.prev.id, plan.r, p.an, p.prev.canvas.width), true);
+  p.cache.set(id, c); if (p.cache.size > 6) p.cache.delete(p.cache.keys().next().value);
+  if (state.photos[state.cur] === p && p.chosen === id) drawCanvas(c, DATA.byId[id].name);
+  busy(false);
+}
+function updateSave() {
+  const b = $("#save"), s = state.chosen && DATA.byId[state.chosen];
+  b.disabled = !s; b.textContent = s ? "Save: " + (s.photographer ? s.photographer : s.name.split(" – ").pop()) : "Choose a look";
+}
+function busy(on, text) { $("#busy").hidden = !on; if (text) $("#busyText").textContent = text; }
+function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3200); }
+
+async function exportCurrent() {
+  const p = state.photos[state.cur], id = state.chosen; if (!id) return;
+  busy(true, "Saving full size…"); await tick(); await tick();
+  try {
+    const full = sizeTo(p.bmp, MAX_EXPORT), plan = p.plans.get(id), c = document.createElement("canvas");
+    renderToCanvas(c, develop(full.id, plan.r, p.an, full.canvas.width), true);
+    const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.94));
+    const name = `${p.name}_${id}.jpg`;
+    busy(false);
+    let saved = false;
+    try { const dl = await claude.use("downloads"); if (dl) { await dl.save({ filename: name, data: blob }); saved = true; toast("Saved"); } } catch (e) { if (e && e.code === "declined") return; }
+    if (!saved) showSheet(blob, name);
+  } catch (e) { busy(false); toast("Could not save that one. Try a smaller photo."); }
+}
+function showSheet(blob, name) {
+  const url = URL.createObjectURL(blob), d = document.createElement("div"); d.className = "sheet";
+  d.innerHTML = `<img alt="Your edited photo"><p>Press and hold the photo, then choose Save to Photos.</p><button class="primary" style="min-height:48px">Done</button>`;
+  $("img", d).src = url; $("button", d).onclick = () => { d.remove(); URL.revokeObjectURL(url); }; document.body.appendChild(d);
+}
+
+/* ------------------------------------------------------------ sample scene + wiring */
+function sampleScene() {
+  const w = 1200, h = 800, c = document.createElement("canvas"); c.width = w; c.height = h; const x = c.getContext("2d");
+  const sky = x.createLinearGradient(0, 0, 0, h * 0.62); sky.addColorStop(0, "#27406e"); sky.addColorStop(0.55, "#d98a6a"); sky.addColorStop(1, "#f6c27a"); x.fillStyle = sky; x.fillRect(0, 0, w, h);
+  const sun = x.createRadialGradient(w * 0.7, h * 0.56, 5, w * 0.7, h * 0.56, 260); sun.addColorStop(0, "rgba(255,244,205,1)"); sun.addColorStop(0.2, "rgba(255,206,130,.7)"); sun.addColorStop(1, "rgba(255,170,90,0)"); x.fillStyle = sun; x.fillRect(0, 0, w, h);
+  let s = 11; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let layer = 0; layer < 3; layer++) {
+    const base = h * (0.52 + layer * 0.07), col = ["#6b5a6e", "#3d3440", "#1f1a24"][layer]; x.fillStyle = col;
+    for (let bx = -20; bx < w; ) { const bw = 50 + rnd() * 90, bh = 90 + rnd() * (200 - layer * 40); x.fillRect(bx, base - bh, bw, bh + h); if (layer > 0) for (let wy = base - bh + 14; wy < base - 8; wy += 22) for (let wx = bx + 8; wx < bx + bw - 10; wx += 16) if (rnd() > 0.55) { x.fillStyle = `rgba(255,${190 + rnd() * 50 | 0},${110 + rnd() * 60 | 0},${0.55 + rnd() * 0.4})`; x.fillRect(wx, wy, 7, 11); x.fillStyle = col; } bx += bw + 2; }
+  }
+  const road = x.createLinearGradient(0, h * 0.8, 0, h); road.addColorStop(0, "#2b2430"); road.addColorStop(1, "#0f0d12"); x.fillStyle = road; x.fillRect(0, h * 0.8, w, h * 0.2);
+  x.fillStyle = "rgba(255,220,160,.5)"; for (let i = 0; i < 9; i++) x.fillRect(w * 0.1 + i * 130, h * 0.9, 70, 5);
+  const id = x.getImageData(0, 0, w, h); for (let i = 0; i < id.data.length; i += 4) { const n = (rnd() - 0.5) * 7; id.data[i] += n; id.data[i + 1] += n; id.data[i + 2] += n; } x.putImageData(id, 0, 0);
+  return createImageBitmap(c).then(bmp => ({ name: "sample-scene", bmp, w, h }));
+}
+$("#pick").addEventListener("change", e => { addPhotos(e.target.files); e.target.value = ""; });
+$("#sample").onclick = async () => addPhotoFrom(await sampleScene());
+$("#save").onclick = exportCurrent;
+const hold = $("#hold");
+const showOrig = () => { if (state.cur >= 0) drawOriginal(); };
+const showEdit = () => { const p = state.photos[state.cur]; if (p && state.chosen && p.cache.has(state.chosen)) drawCanvas(p.cache.get(state.chosen), DATA.byId[state.chosen].name); };
+hold.addEventListener("pointerdown", e => { e.preventDefault(); showOrig(); });
+["pointerup", "pointercancel", "pointerleave"].forEach(t => hold.addEventListener(t, showEdit));
+$("#search").addEventListener("input", e => {
+  const q = e.target.value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
+  document.querySelectorAll("#looks .tiles").forEach(g => {
+    let any = false;
+    g.querySelectorAll(".tile").forEach(t => { const m = words.every(w => t.dataset.q.includes(w)); t.hidden = !m; any = any || m; });
+    const head = g.previousElementSibling, isRec = !!head.dataset.rec, hide = !any || (isRec && !!q);   // searching hides the 'best for' row (duplicates)
+    g.hidden = hide; head.hidden = hide;
+  });
+});
+window.__darkroom = { estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
+</script>

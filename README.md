@@ -51,7 +51,11 @@ Tone: highlights -58 to hold 0.31% clipping
 
 Describe a look in words (`"dark moody portrait, warm, grainy"`) and it picks the closest style and turns the adjectives into slider moves.
 
-## On your phone (no Xcode, no App Store)
+## Phone-only version (nothing to install or host)
+
+`browser/darkroom.html` is the whole editor as one static page: the same 56 looks, exposure/highlight/skin/sky analysis, face detection (OpenCV's Haar model ported to JS) and auto-straightening, all running in the phone's browser. Open it from any static host (e.g. GitHub Pages) or as a Claude artifact; photos never leave the device. Limits versus the full app: JPEG/HEIC/PNG input only (no RAW), exports up to ~2600 px on the long side, no noise reduction. Rebuild it with `python scripts/build_browser.py` after changing `darkroom/styles.py` or `browser/darkroom.template.html`.
+
+## On your phone with the full app (RAW, no Xcode, no App Store)
 
 Darkroom is a web app, so the phone only needs a browser. Open it in Safari/Chrome and choose *Add to Home Screen* to install it like an app. The editing itself runs on whatever machine runs Darkroom, so you need one of:
 
