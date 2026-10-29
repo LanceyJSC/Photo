@@ -1,6 +1,7 @@
 /* Tiny CNN inference engine (runs in a Web Worker; also loadable in Node for tests).
    Executes the graph exported by scripts/export_vision_model.py: conv, depthwise conv, add,
    global average pool, fully connected, softmax. NHWC float32, TFLite SAME/VALID padding rules. */
+var VISION_LAST = null;
 var VISION = (function () {
   var models = {};
   function b64ToBytes(b64) { var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
@@ -10,6 +11,7 @@ var VISION = (function () {
     function f32(off, n) { return new Float32Array(buf.slice(off, off + 4 * n)); }
     model.ops.forEach(function (op) {
       if (op.b) op.bias = f32(op.b.off, prod(op.b.shape));
+      if (op.alpha) op.alphaf = f32(op.alpha.off, prod(op.alpha.shape));
       if (op.w) {
         var e = op.w, n = prod(e.shape), q = new Int8Array(buf, e.off, n), sc = f32(e.scale_off, e.shape[e.axis]), w = new Float32Array(n);
         if (op.t === "dw") {                       // stored [C][kh*kw] -> want [kh*kw][C]
@@ -75,6 +77,16 @@ var VISION = (function () {
       else if (op.t === "add") { var y = t[op.in2]; out = new Float32Array(x.length); for (var i = 0; i < x.length; i++) out[i] = act(x[i] + y[i], op.act); }
       else if (op.t === "avg") { var H = s[1], W = s[2], C = s[3]; out = new Float32Array(C); for (var p = 0; p < H * W; p++) for (var c = 0; c < C; c++) out[c] += x[p * C + c]; for (var c2 = 0; c2 < C; c2++) out[c2] /= H * W; }
       else if (op.t === "reshape") out = x;
+      else if (op.t === "prelu") { out = new Float32Array(x.length); var al = op.bias_alpha || (op.bias_alpha = op.alphaf), na = al.length, Cc = s[s.length - 1]; for (var pi = 0; pi < x.length; pi++) { var xv = x[pi]; out[pi] = xv >= 0 ? xv : xv * al[na === 1 ? 0 : pi % Cc]; } }
+      else if (op.t === "sigmoid") { out = new Float32Array(x.length); for (var si = 0; si < x.length; si++) out[si] = 1 / (1 + Math.exp(-x[si])); }
+      else if (op.t === "pad") {
+        var pd = op.pads, PH = s[1], PW = s[2], PC = s[3], oh3 = PH + pd[1][0] + pd[1][1], ow3 = PW + pd[2][0] + pd[2][1], oc3 = PC + pd[3][0] + pd[3][1]; out = new Float32Array(oh3 * ow3 * oc3);
+        for (var py = 0; py < PH; py++) for (var px = 0; px < PW; px++) { var src3 = (py * PW + px) * PC, dst3 = ((py + pd[1][0]) * ow3 + px + pd[2][0]) * oc3 + pd[3][0]; for (var pc = 0; pc < PC; pc++) out[dst3 + pc] = x[src3 + pc]; }
+      }
+      else if (op.t === "maxpool") {
+        var dm = dims(s, op, op.fh, op.fw), Cm = s[3]; out = new Float32Array(dm.oh * dm.ow * Cm).fill(-1e30);
+        for (var oy2 = 0; oy2 < dm.oh; oy2++) for (var ox2 = 0; ox2 < dm.ow; ox2++) for (var ky2 = 0; ky2 < op.fh; ky2++) { var iy2 = oy2 * op.sh - dm.pt + ky2; if (iy2 < 0 || iy2 >= dm.H) continue; for (var kx2 = 0; kx2 < op.fw; kx2++) { var ix2 = ox2 * op.sw - dm.pl + kx2; if (ix2 < 0 || ix2 >= dm.W) continue; var ib2 = (iy2 * dm.W + ix2) * Cm, ob3 = (oy2 * dm.ow + ox2) * Cm; for (var c3 = 0; c3 < Cm; c3++) if (x[ib2 + c3] > out[ob3 + c3]) out[ob3 + c3] = x[ib2 + c3]; } }
+      }
       else if (op.t === "concat") {
         var parts = op.ins.map(function (i) { return t[i]; }), shp = op.ins.map(function (i) { return shapes[i]; }), P = shp[0][1] * shp[0][2], Ct = 0, q4;
         shp.forEach(function (sh) { Ct += sh[3]; }); out = new Float32Array(P * Ct);
@@ -96,7 +108,8 @@ var VISION = (function () {
       else if (op.t === "softmax") { var mx = -1e30, sum = 0; out = new Float32Array(x.length); for (var q = 0; q < x.length; q++) mx = Math.max(mx, x[q]); for (var q2 = 0; q2 < x.length; q2++) { out[q2] = Math.exp(x[q2] - mx); sum += out[q2]; } for (var q3 = 0; q3 < x.length; q3++) out[q3] /= sum; }
       t[op.out] = out; shapes[op.out] = op.shape;
     }
-    return { probs: t[M.output], embed: t[M.embed] };
+    VISION_LAST = t;
+    return { probs: t[M.output], embed: t[M.embed], outs: (M.outputs || []).map(function (i) { return t[i]; }) };
   }
   return { load: load, run: run };
 })();
@@ -105,7 +118,7 @@ if (typeof self !== "undefined" && typeof window === "undefined") {   // inside 
     var m = e.data;
     try {
       if (m.type === "init") { for (var k in m.models) VISION.load(k, m.models[k]); self.postMessage({ type: "ready" }); }
-      else if (m.type === "run") { var r = VISION.run(m.name, m.pixels), tr = [r.probs.buffer]; if (r.embed) tr.push(r.embed.buffer); self.postMessage({ type: "result", id: m.id, probs: r.probs, embed: r.embed }, tr); }
+      else if (m.type === "run") { var r = VISION.run(m.name, m.pixels), tr = [r.probs.buffer], seen = [r.probs.buffer]; if (r.embed) { tr.push(r.embed.buffer); seen.push(r.embed.buffer); } (r.outs || []).forEach(function (o) { if (seen.indexOf(o.buffer) < 0) { seen.push(o.buffer); tr.push(o.buffer); } }); self.postMessage({ type: "result", id: m.id, probs: r.probs, embed: r.embed, outs: r.outs }, tr); }
     } catch (err) { self.postMessage({ type: "error", id: m.id, message: String(err) }); }
   };
 }

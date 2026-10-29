@@ -14,6 +14,7 @@ import numpy as np
 import tflite
 
 CONV, DW, ADD, AVG, RESHAPE, FC, SOFTMAX, CONCAT, RESIZE = 3, 4, 0, 1, 22, 9, 25, 2, 23
+MAXPOOL, PAD, PRELU, LOGISTIC, DEQUANTIZE = 17, 34, 54, 14, 6
 
 
 def export(path: str, mean: float = 127.0, std: float = 128.0) -> dict:
@@ -31,12 +32,24 @@ def export(path: str, mean: float = 127.0, std: float = 128.0) -> dict:
         t = sg.Tensors(i)
         return t, [t.Shape(j) for j in range(t.ShapeLength())]
 
+    deq = {}    # float16 constants that reach the graph through DEQUANTIZE ops
+    for k in range(sg.OperatorsLength()):
+        o_ = sg.Operators(k); c_ = m.OperatorCodes(o_.OpcodeIndex())
+        if max(c_.BuiltinCode(), c_.DeprecatedBuiltinCode()) == DEQUANTIZE:
+            deq[o_.Outputs(0)] = o_.Inputs(0)
+
+    def const(i):
+        src = deq.get(i, i)
+        t, shape = tensor(src)
+        raw_ = m.Buffers(t.Buffer()).DataAsNumpy().tobytes()
+        dt = np.float16 if t.Type() == 1 else np.int32 if t.Type() == 2 else np.float32
+        return np.frombuffer(raw_, dtype=dt).astype(np.float32 if dt != np.int32 else np.int32).reshape(shape), shape
+
     def put(i, kind):
         """store tensor i; kind 'w' = int8 per-output-channel (channel axis 0 or last for depthwise)"""
         if (i, kind) in weights:
             return weights[(i, kind)]
-        t, shape = tensor(i)
-        data = np.frombuffer(m.Buffers(t.Buffer()).DataAsNumpy().tobytes(), dtype=np.float32).reshape(shape)
+        data, shape = const(i)
         if kind == "w":
             axis = 3 if shape[0] == 1 and len(shape) == 4 and shape[3] > 1 and shape[1] > 1 and kind == "w" and False else 0
         entry = {"shape": shape, "off": blob.tell()}
@@ -62,6 +75,8 @@ def export(path: str, mean: float = 127.0, std: float = 128.0) -> dict:
         op = sg.Operators(k)
         oc = m.OperatorCodes(op.OpcodeIndex())
         code = max(oc.BuiltinCode(), oc.DeprecatedBuiltinCode())
+        if code == DEQUANTIZE:
+            continue
         ins = [op.Inputs(j) for j in range(op.InputsLength())]
         outs = [op.Outputs(j) for j in range(op.OutputsLength())]
         opts = op.BuiltinOptions()
@@ -88,6 +103,16 @@ def export(path: str, mean: float = 127.0, std: float = 128.0) -> dict:
         elif code == RESIZE:
             o = tflite.ResizeBilinearOptions(); o.Init(opts.Bytes, opts.Pos)
             d.update(t="resize", align=bool(o.AlignCorners()), half=bool(o.HalfPixelCenters()))
+        elif code == PRELU:
+            d.update(t="prelu", alpha=put(ins[1], "b"))
+        elif code == MAXPOOL:
+            o = tflite.Pool2DOptions(); o.Init(opts.Bytes, opts.Pos)
+            d.update(t="maxpool", fh=o.FilterHeight(), fw=o.FilterWidth(), sh=o.StrideH(), sw=o.StrideW(), pad="same" if o.Padding() == 0 else "valid")
+        elif code == PAD:
+            pads, _ = const(ins[1])
+            d.update(t="pad", pads=[[int(a), int(b)] for a, b in pads])
+        elif code == LOGISTIC:
+            d.update(t="sigmoid")
         elif code == RESHAPE:
             d.update(t="reshape")
         elif code == FC:
@@ -99,7 +124,7 @@ def export(path: str, mean: float = 127.0, std: float = 128.0) -> dict:
         d["shape"] = tensor(outs[0])[1]
         ops.append(d)
     inp = sg.Inputs(0)
-    return {"input": {"idx": inp, "shape": tensor(inp)[1], "mean": mean, "std": std}, "output": sg.Outputs(0), "embed": avg_out,
+    return {"input": {"idx": inp, "shape": tensor(inp)[1], "mean": mean, "std": std}, "output": sg.Outputs(0), "outputs": [sg.Outputs(i) for i in range(sg.OutputsLength())], "embed": avg_out,
             "ops": ops, "labels": labels, "weights": base64.b64encode(blob.getvalue()).decode()}
 
 

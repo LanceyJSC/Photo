@@ -596,7 +596,7 @@ function opEffects(img, e, long, seed) {
     for (let i = 0; i < n; i++) { const L = img.L[i], prof = 0.28 + 0.72 * Math.pow(clamp(4 * L * (1 - L), 0, 1), 0.8); img.L[i] = L + g.amount * 0.055 * (full[i] / sd) * prof; }
   }
 }
-function opSharpen(img, d, long) {
+function opSharpen(img, d, long, mul) {
   const amt = d.sharpen; if (amt <= 0) return;
   const { w, h, L } = img, n = L.length, radius = clamp(0.5 + long * 0.0003, 0.5, 1.7);
   const bl = gauss(L, w, h, radius), det = new Float32Array(n);
@@ -605,7 +605,7 @@ function opSharpen(img, d, long) {
   const mag = gauss(ab, w, h, 1.5), m = d.sharpen_masking;
   for (let i = 0; i < n; i++) {
     const edge = 1 - m + m * smooth(0.003, 0.03 + 0.03 * m, mag[i]);
-    L[i] += clamp(det[i] * edge, -0.07, 0.07) * amt * 1.6;
+    L[i] += clamp(det[i] * edge, -0.07, 0.07) * amt * 1.6 * (mul ? mul[i] : 1);
   }
 }
 
@@ -977,7 +977,8 @@ function solveTone(proxy, r, targets, an) {
 
 /** What a retoucher does around the subject for each look: lift it, hold the background back, clean skin, brighten eyes. */
 function retouchFor(st, an) {
-  const seg = an.seg; if (!seg) return null;
+  const seg = an.seg || { coverage: 0, personCoverage: 0 }, lm = !!(an.lms && an.lms.length);
+  if (!an.seg && !lm) return null;
   const cat = st.category, id = st.id, bw = st.bw, person = seg.personCoverage > 0.04 || (an.faces && an.faces.length > 0);
   const usable = seg.coverage > 0.04 && seg.coverage < 0.8;
   let rt = { subject_ev: 0.14, bg_ev: -0.22, bg_sat: bw ? 0 : -0.12, bg_clarity: -0.12, subject_clarity: 0.16, skin_smooth: 0, eye_pop: 0 };
@@ -994,14 +995,31 @@ function retouchFor(st, an) {
   if (!(an.faces && an.faces.length)) rt.eye_pop = 0;
   for (const k of ["subject_ev", "bg_ev", "bg_sat", "bg_clarity", "subject_clarity"]) rt[k] *= 1.3;     // make the separation clearly visible
   rt.skin_smooth = Math.min(0.6, rt.skin_smooth * 1.2);
+  if (lm) {                       // landmark-driven face work: what a retoucher does with dodge & burn, eyes and teeth
+    const quiet = id === "ph_sugimoto" || id === "arch_minimal" || id === "bw_high_key";
+    const raw = id === "ph_lindbergh" || id === "ph_hcb" || id === "ph_maier" || id === "ph_frank" || id === "ph_moriyama" || id === "street_gritty" || id === "bw_noir" || id === "ph_koudelka";
+    rt.lm = true;
+    rt.heal = quiet ? 0 : raw ? 0.3 : 1;
+    rt.skin_smooth = quiet || raw ? 0 : Math.max(rt.skin_smooth, 0.3);
+    rt.eye_pop = quiet ? 0 : raw ? 0.5 : Math.max(rt.eye_pop, 0.7);
+    rt.teeth = quiet || raw ? 0 : 1;
+    rt.dd = quiet ? 0 : raw ? 0.6 : cat === "Portrait" ? 1.3 : 1;
+  }
   return rt;
 }
 function retouchNotes(rt, an) {
   if (!rt) return [];
   const n = [], f = v => (v > 0 ? "+" : "") + v.toFixed(2);
   if (rt.subject_ev || rt.bg_ev) n.push(`Subject ${f(rt.subject_ev)} EV, background ${f(rt.bg_ev)} EV${rt.bg_sat ? " and calmer colour" : ""} for separation`);
-  if (rt.skin_smooth > 0) n.push(`Skin smoothed ${Math.round(rt.skin_smooth * 100)}%, texture kept`);
-  if (rt.eye_pop > 0) n.push("Eyes brightened");
+  if (rt.skin_smooth > 0 && !rt.lm) n.push(`Skin smoothed ${Math.round(rt.skin_smooth * 100)}%, texture kept`);
+  if (rt.lm) {
+    n.push("Face mapped with 478 landmarks, so retouching stays on the face");
+    if (rt.skin_smooth > 0 || rt.heal > 0) n.push("Skin evened and small blemishes healed inside the face only, pores and texture kept");
+    if (rt.eye_pop > 0) n.push("Eyes: whites cleaned and brightened (never pure white), irises lifted and sharpened");
+    if (rt.teeth > 0) n.push("Teeth de-yellowed slightly");
+    if (rt.dd > 0) n.push("Dodge & burn: forehead, nose bridge, cheekbones, under-eyes and chin lifted; jaw edge and temples shaded");
+    n.push("Sharpening held back on skin, kept crisp on eyes and brows");
+  } else if (rt.eye_pop > 0) n.push("Eyes brightened");
   return n;
 }
 
@@ -1013,6 +1031,10 @@ function planRecipe(an, style, proxy) {
     const k = r.wb.auto * an.cast;
     r.wb.mired += clamp(an.wb[0] * k, -r.wb.auto_max_mired, r.wb.auto_max_mired); r.wb.tint += clamp(an.wb[1] * k, -25, 25);
     notes.push("White balance nudged toward neutral");
+  }
+  if (an.skinSt && an.lms && an.lms.length && r.color.bw.amount <= 0) {
+    const sa = skinAnchorWB(an.skinSt, an.cast > 0.15 ? 0.35 : 0.6);
+    if (sa && (Math.abs(sa.mired) >= 1 || Math.abs(sa.tint) >= 1)) { r.wb.mired += clamp(sa.mired, -14, 14); r.wb.tint += clamp(sa.tint, -8, 8); notes.push(`Skin tone checked against the skin line (${Math.round(sa.from)}° → ${Math.round(sa.to)}°) and white balance nudged`); }
   }
   const sc = clamp((an.dr - 8.5) / 4, -1, 1);
   if (sc < -0.2 && r.tone.contrast >= 1) { r.tone.contrast *= 1 + 0.18 * -sc; notes.push("Flat scene: added contrast"); }
@@ -1085,7 +1107,7 @@ function opDenoise(img, luma, chroma) {
 
 /* ============================================================ retouching with masks (subject / background / skin / eyes) */
 function opRetouch(img, rt, M, an, long) {
-  const { w, h, L } = img, n = w * h, notes = [];
+  const { w, h, L } = img, n = w * h;
   if (M.subject) {
     const mS = M.subject;
     if (rt.subject_ev) gainMask(img, rt.subject_ev, i => mS[i]);
@@ -1099,6 +1121,8 @@ function opRetouch(img, rt, M, an, long) {
       }
     }
   }
+  const F = M.face;
+  if (F) return opFace(img, rt, F, an, long);
   if (rt.skin_smooth > 0 && M.person) {
     const mP = M.person, m = new Float32Array(n);
     for (let i = 0; i < n; i++) { if (mP[i] < 0.3) continue; const C = Math.hypot(img.a[i], img.b[i]); let hd = Math.atan2(img.b[i], img.a[i]) / deg; if (hd < 0) hd += 360; m[i] = mP[i] * skinWeight(hd, C, img.L[i]); }
@@ -1117,6 +1141,68 @@ function opRetouch(img, rt, M, an, long) {
   }
 }
 
+
+/** Landmark-driven face retouch, in the order a retoucher works: heal, even the skin, eyes, teeth, dodge & burn. Returns a sharpening multiplier. */
+function opFace(img, rt, F, an, long) {
+  const { w, h } = img, n = w * h, L = img.L, A = img.a, B = img.b;
+  const fw = Math.max(40, (an.faces && an.faces[0] ? an.faces[0][2] : 0.2) * w);
+  const skin = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (F.oval[i] < 0.02) continue;
+    const C = Math.hypot(A[i], B[i]); let hd = Math.atan2(B[i], A[i]) / deg; if (hd < 0) hd += 360;
+    skin[i] = F.oval[i] * (1 - F.eyes[i]) * (1 - F.brows[i]) * (1 - F.lips[i]) * Math.max(0.25, skinWeight(hd, C, L[i]));
+  }
+  // 1. heal: spots darker or redder than their surroundings at blemish scale (not pores, not nostrils or shadows)
+  if (rt.heal > 0) {
+    const s1 = Math.max(0.8, fw / 220), s2 = s1 * 4.5, small = gauss(L, w, h, s1), big = gauss(L, w, h, s2), ra = gauss(A, w, h, s1), rb = gauss(A, w, h, s2);
+    const La = gauss(B, w, h, s1), Lb = gauss(B, w, h, s2);
+    for (let i = 0; i < n; i++) {
+      if (skin[i] < 0.2) continue;
+      const dl = big[i] - small[i], dr = ra[i] - rb[i];
+      const spot = Math.max(smooth(0.012, 0.03, dl) * (1 - smooth(0.05, 0.09, dl)), smooth(0.008, 0.02, dr) * (1 - smooth(0.035, 0.06, dr)) * 0.8) * skin[i] * rt.heal;
+      if (spot < 0.01) continue;
+      L[i] += (big[i] - L[i]) * spot * 0.8; A[i] += (rb[i] - A[i]) * spot * 0.85; B[i] += (Lb[i] - B[i]) * spot * 0.85;
+    }
+  }
+  // 2. even the skin tone: smooth colour and the soft shading, keep the fine texture
+  if (rt.skin_smooth > 0) {
+    const mm = gauss(skin, w, h, Math.max(1, long / 900)), low = guided(L, L, w, h, 0.004, 0.000625), a0 = A.slice(), b0 = B.slice();
+    const sa = guided(L, a0, w, h, 0.01, 0.0009), sb = guided(L, b0, w, h, 0.01, 0.0009);
+    for (let i = 0; i < n; i++) { const k = mm[i] * rt.skin_smooth; if (k < 0.01) continue; L[i] += (low[i] - L[i]) * k * 0.5; A[i] += (sa[i] - a0[i]) * k * 0.85; B[i] += (sb[i] - b0[i]) * k * 0.85; }
+  }
+  // 3. eyes: whites cleaned (not pure white), irises lifted with local contrast
+  if (rt.eye_pop > 0) {
+    const sc = gauss(L, w, h, Math.max(1.5, fw / 35));
+    for (let i = 0; i < n; i++) {
+      const e = F.eyes[i]; if (e > 0.02) {
+        const C = Math.hypot(A[i], B[i]), white = e * (1 - F.iris[i]) * smooth(0.5, 0.7, L[i]) * (1 - smooth(0.07, 0.14, C));
+        if (white > 0.01) { if (L[i] < 0.93) L[i] = Math.min(0.93, L[i] * (1 + 0.05 * rt.eye_pop * white)); A[i] *= 1 - 0.18 * white * rt.eye_pop; B[i] *= 1 - 0.3 * white * rt.eye_pop; }
+      }
+      const ir = F.iris[i]; if (ir > 0.02) { L[i] += rt.eye_pop * ir * (0.02 + clamp(0.4 * (L[i] - sc[i]), -0.03, 0.05)); }
+    }
+  }
+  // 4. teeth: pull the yellow out, a touch brighter
+  if (rt.teeth > 0) {
+    for (let i = 0; i < n; i++) {
+      const m = F.mouth[i]; if (m < 0.05) continue;
+      const C = Math.hypot(A[i], B[i]), t = m * smooth(0.55, 0.72, L[i]) * (1 - smooth(0.09, 0.16, C));
+      if (t > 0.01) { A[i] *= 1 - 0.3 * t; B[i] *= 1 - 0.4 * t; L[i] += 0.015 * t; }
+    }
+  }
+  // 5. dodge & burn: sculpt the face with light
+  if (rt.dd > 0) {
+    const sm = gauss(skin, w, h, Math.max(1, long / 700));
+    for (let i = 0; i < n; i++) {
+      const k = Math.max(sm[i], F.oval[i] * (1 - F.eyes[i]) * (1 - F.lips[i]) * 0.6); if (k < 0.02) continue;
+      L[i] += rt.dd * k * (0.04 * F.dodge[i] - 0.04 * F.burn[i]);
+    }
+  }
+  // sharpening multiplier: skin gentle, eyes / brows / lips crisp
+  const mul = new Float32Array(n);
+  for (let i = 0; i < n; i++) mul[i] = clamp(1 - 0.65 * skin[i] + 0.35 * Math.max(F.iris[i], F.eyes[i] * 0.7, F.brows[i] * 0.6, F.lips[i] * 0.4), 0.3, 1.35);
+  return mul;
+}
+
 /* ============================================================ render a recipe on an ImageData */
 function wbFor(r, an) { return Math.abs(r.wb.mired) > 0.05 || Math.abs(r.wb.tint) > 0.05 ? wbGains(r.wb.mired, r.wb.tint) : null; }
 function cropSmall(d, w, h, r) {
@@ -1125,11 +1211,12 @@ function cropSmall(d, w, h, r) {
   return { d: o, w: cw, h: ch };
 }
 function develop(id, r, an, fullLong) {
+  const warped = !!(an.geo && (r.geometry.auto_upright || r.geometry.auto_horizon) && (an.geo.conf > 0.25 || an.geo.horizon != null));
   id = applyGeometry(id, r.geometry, an.geo);
   let lab = toLab(id, wbFor(r, an)), note = "", crop = null;
   const long0 = Math.max(lab.w, lab.h);
   if (state.autoFrame && r.frame) {
-    const small = shrinkLab(lab, 120), warped = an.geo && (r.geometry.auto_upright || r.geometry.auto_horizon) && (an.geo.conf > 0.25 || an.geo.horizon != null);
+    const small = shrinkLab(lab, 120);
     crop = planCrop(small, warped ? [] : an.faces, r.frame);
     if (crop) { lab = cropLab(lab, crop); note = crop.note; }
   }
@@ -1143,14 +1230,16 @@ function develop(id, r, an, fullLong) {
   opExposure(lab, ev); opFilmic(lab, r.tone, ev); opLocalTone(lab, r.tone);
   opPresence(lab, r.presence, long);
   opColor(lab, r.color);
-  if (r.retouch && an0.seg) {
-    const M = { subject: refineMask({ d: an0.seg.subject, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop), person: r.retouch.skin_smooth > 0 ? refineMask({ d: an0.seg.person, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop) : null };
-    opRetouch(lab, r.retouch, M, an, long);
+  let sharpMul = null;
+  if (r.retouch && (an0.seg || (r.retouch.lm && !warped))) {
+    const sg = an0.seg, M = { subject: sg ? refineMask({ d: sg.subject, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop) : null, person: sg && r.retouch.skin_smooth > 0 ? refineMask({ d: sg.person, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop) : null, face: null };
+    if (r.retouch.lm && !warped && an0.lms && an0.lms.length) { try { M.face = faceMasks(an0.lms, lab.w, lab.h, crop); } catch (e) { M.face = null; } }
+    sharpMul = opRetouch(lab, r.retouch, M, an, long) || null;
   }
   opLocal(lab, r.local, an, skyMask);
   opGrade(lab, r.color.grade); opBW(lab, r.color.bw); opCurveFade(lab, r.tone); opDesatExtremes(lab, r.tone);
   opEffects(lab, r.effects, long, 7);
-  opSharpen(lab, r.detail, long);
+  opSharpen(lab, r.detail, long, sharpMul);
   lab.note = note; lab.crop = crop;
   return lab;
 }
@@ -1163,10 +1252,10 @@ function renderToCanvas(canvas, lab, dither) {
 
 /* ============================================================ machine learning */
 /* 1. Vision: Google's EfficientNet-Lite0 (trained on 1.2 M photos, 1000 classes) running in a Web Worker. */
-const VERSION = "v8";
+const VERSION = "v9";
 const diag = { mode: {}, ms: {}, err: {}, dng: null };
 const _vw = {}; let _vid = 0; const _vp = new Map();
-const MODELS = () => ({ cls: window.__VISION__, seg: window.__SEG__ });
+const MODELS = () => ({ cls: window.__VISION__, seg: window.__SEG__, lm: window.__LM__ });
 /** Run script text on the main thread without eval (inline <script> is allowed wherever this page itself runs). */
 function injectScript(id, text) { if (document.getElementById("inj-" + id)) return; const el = document.createElement("script"); el.id = "inj-" + id; el.textContent = text; document.head.appendChild(el); }
 function useMainThread(name, w) {
@@ -1248,6 +1337,101 @@ function refineMask(map, w, h, guideL, crop) {
   return up;
 }
 
+
+/* ============================================================ face geometry: 478 landmarks (MediaPipe Face Landmarker network) */
+const LMX = {
+  oval: [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109],
+  eyeR: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246], eyeL: [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+  browR: [70, 63, 105, 66, 107, 55, 65, 52, 53, 46], browL: [300, 293, 334, 296, 336, 285, 295, 282, 283, 276],
+  lipsO: [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146], lipsI: [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95],
+  irisR: [468, 469, 470, 471, 472], irisL: [473, 474, 475, 476, 477],
+};
+async function landmarksFor(canvas, faces) {
+  const out = [];
+  for (const f of faces.slice().sort((a, b) => b[2] - a[2]).slice(0, 2)) {
+    try {
+      const W = canvas.width, H = canvas.height, s = 1.6 * Math.max(f[2] * W, f[3] * H), cx = (f[0] + f[2] / 2) * W, cy = (f[1] + f[3] / 2 + 0.05 * f[3]) * H;
+      const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d", { willReadFrequently: true });
+      x.imageSmoothingQuality = "high"; x.drawImage(canvas, cx - s / 2, cy - s / 2, s, s, 0, 0, 256, 256);
+      const d = x.getImageData(0, 0, 256, 256).data, t = new Float32Array(256 * 256 * 3);
+      for (let i = 0, j = 0; i < d.length; i += 4) { t[j++] = d[i] / 255; t[j++] = d[i + 1] / 255; t[j++] = d[i + 2] / 255; }
+      const r = await visionRun("lm", t); if (!r || !r.outs) continue;
+      const lmA = r.outs.find(o => o.length === 1434), flag = Math.max(...r.outs.filter(o => o.length === 1).map(o => o[0]));
+      if (!lmA || !(flag > 0)) continue;
+      const pts = new Float32Array(478 * 2);
+      for (let i = 0; i < 478; i++) { pts[i * 2] = (cx - s / 2 + (lmA[i * 3] / 256) * s) / W; pts[i * 2 + 1] = (cy - s / 2 + (lmA[i * 3 + 1] / 256) * s) / H; }
+      out.push(pts);
+    } catch (e) { /* this face just gets no landmarks */ }
+  }
+  return out;
+}
+/** Raster masks of face parts at a working size. pts are normalised to the original photo; crop maps them to the framed photo. */
+function faceMasks(lms, w, h, crop) {
+  const sc = Math.min(1, 720 / Math.max(w, h)), sw = Math.max(8, Math.round(w * sc)), sh = Math.max(8, Math.round(h * sc));
+  const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh; const g = cv.getContext("2d", { willReadFrequently: true });
+  const X = (p, i) => { const u = p[i * 2]; return (crop ? (u - crop.x) / crop.w : u) * sw; }, Y = (p, i) => { const v = p[i * 2 + 1]; return (crop ? (v - crop.y) / crop.h : v) * sh; };
+  const grab = () => { const d = g.getImageData(0, 0, sw, sh).data, m = new Float32Array(sw * sh); for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3] / 255; return m; };
+  const poly = (p, idx) => { g.beginPath(); idx.forEach((k, n) => (n ? g.lineTo(X(p, k), Y(p, k)) : g.moveTo(X(p, k), Y(p, k)))); g.closePath(); g.fill(); };
+  const ell = (cx, cy, rx, ry, rot) => { g.beginPath(); g.ellipse(cx, cy, Math.max(rx, 0.5), Math.max(ry, 0.5), rot || 0, 0, Math.PI * 2); g.fill(); };
+  const draw = fn => { g.clearRect(0, 0, sw, sh); g.fillStyle = "#fff"; fn(); return grab(); };
+  const names = ["oval", "eyes", "brows", "lips", "mouth", "iris", "dodge", "burn", "shrunk"], M = {}; names.forEach(n => (M[n] = new Float32Array(sw * sh)));
+  const maxIn = (dst, src) => { for (let i = 0; i < dst.length; i++) if (src[i] > dst[i]) dst[i] = src[i]; };
+  for (const p of lms) {
+    const ipd = Math.hypot(X(p, 33) - X(p, 263), Y(p, 33) - Y(p, 263)), P = k => [X(p, k), Y(p, k)];
+    maxIn(M.oval, draw(() => poly(p, LMX.oval)));
+    maxIn(M.eyes, draw(() => { poly(p, LMX.eyeR); poly(p, LMX.eyeL); }));
+    maxIn(M.brows, draw(() => { poly(p, LMX.browR); poly(p, LMX.browL); }));
+    maxIn(M.lips, draw(() => poly(p, LMX.lipsO)));
+    maxIn(M.mouth, draw(() => poly(p, LMX.lipsI)));
+    maxIn(M.iris, draw(() => { for (const ring of [LMX.irisR, LMX.irisL]) { const c = P(ring[0]); let r = 0; for (let k = 1; k < 5; k++) r += Math.hypot(P(ring[k])[0] - c[0], P(ring[k])[1] - c[1]); ell(c[0], c[1], r / 4 * 1.05, r / 4 * 1.05); } }));
+    // shapes a retoucher paints: dodge the forehead centre, nose bridge, cheekbones, under-eyes, chin; burn the jaw edge and temples
+    maxIn(M.dodge, draw(() => {
+      const f = [(X(p, 10) + X(p, 168)) / 2, (Y(p, 10) + Y(p, 168)) / 2 + 0.05 * ipd]; ell(f[0], f[1], 0.62 * ipd, 0.30 * ipd);
+      const nb = [(X(p, 168) + X(p, 6)) / 2, (Y(p, 168) + Y(p, 6)) / 2]; ell(nb[0], nb[1], 0.10 * ipd, 0.36 * ipd);
+      for (const k of [205, 425]) ell(X(p, k), Y(p, k) - 0.05 * ipd, 0.30 * ipd, 0.16 * ipd);
+      for (const k of [145, 374]) ell(X(p, k), Y(p, k) + 0.14 * ipd, 0.28 * ipd, 0.09 * ipd);
+      ell(X(p, 152), Y(p, 152) - 0.20 * ipd, 0.26 * ipd, 0.12 * ipd);
+    }));
+    const cx = P(168), shr = draw(() => { g.beginPath(); LMX.oval.forEach((k, n) => { const x = cx[0] + (X(p, k) - cx[0]) * 0.80, y = cx[1] + (Y(p, k) - cx[1]) * 0.80; n ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.fill(); });
+    maxIn(M.shrunk, shr);
+    const t = draw(() => { for (const k of [21, 251, 54, 284]) ell(X(p, k), Y(p, k), 0.30 * ipd, 0.34 * ipd); });
+    for (let i = 0; i < M.burn.length; i++) M.burn[i] = Math.max(M.burn[i], Math.max(0, M.oval[i] - shr[i]) , t[i] * M.oval[i]);
+  }
+  const up = (m, sig) => { let b = gauss(m, sw, sh, Math.max(0.8, sig * sw)); b = sw === w && sh === h ? b : upBilinear(b, sw, sh, w, h); for (let i = 0; i < b.length; i++) b[i] = clamp(b[i], 0, 1); return b; };
+  return { oval: up(M.oval, 0.004), eyes: up(M.eyes, 0.002), brows: up(M.brows, 0.003), lips: up(M.lips, 0.003), mouth: up(M.mouth, 0.0015), iris: up(M.iris, 0.0015), dodge: up(M.dodge, 0.02), burn: up(M.burn, 0.025) };
+}
+/** Median skin colour inside the face (landmarks) -> how far its hue is from the natural skin line. */
+function skinStats(lab, lms) {
+  if (!lms.length) return null;
+  const m = faceMasks(lms, lab.w, lab.h, null), A = [], B = [], Ls = [];
+  for (let i = 0; i < lab.L.length; i += 2) if (m.oval[i] > 0.9 && m.eyes[i] < 0.05 && m.brows[i] < 0.05 && m.lips[i] < 0.05 && lab.L[i] > 0.3 && Math.hypot(lab.a[i], lab.b[i]) > 0.02) { A.push(lab.a[i]); B.push(lab.b[i]); Ls.push(lab.L[i]); }
+  if (A.length < 80) return null;
+  const med = v => { v.sort((x, y) => x - y); return v[v.length >> 1]; }, a = med(A), b = med(B), L = med(Ls);
+  let hue = Math.atan2(b, a) / deg; if (hue < 0) hue += 360;
+  return { L, a, b, hue, chroma: Math.hypot(a, b), n: A.length };
+}
+function oklabToLin(L, a, b) {
+  const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3), m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3), s = Math.pow(L - 0.0894841775 * a - 1.291485548 * b, 3);
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+}
+function linToOklab(r, g, b) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+}
+const SKIN_LINE = 52;   // Oklab hue of the "skin tone line": skin of every complexion sits within ~10-20 degrees of one hue
+/** White balance with skin as the anchor (pros check portraits against the skin line, not just neutral greys). */
+function skinAnchorWB(sk, strength) {
+  if (!sk || sk.chroma < 0.03) return null;
+  const lin = oklabToLin(sk.L, sk.a, sk.b); let best = { m: 0, t: 0, d: 1e9 };
+  for (let m = -16; m <= 16; m++) for (let t = -8; t <= 8; t += 2) {
+    const g = wbGains(m, t), lab = linToOklab(Math.max(0, lin[0] * g[0]), Math.max(0, lin[1] * g[1]), Math.max(0, lin[2] * g[2]));
+    let hue = Math.atan2(lab[2], lab[1]) / deg; if (hue < 0) hue += 360;
+    const d = Math.abs(hue - SKIN_LINE) + 0.08 * (Math.abs(m) + Math.abs(t)); if (d < best.d) best = { m, t, d, hue };
+  }
+  if (Math.abs(sk.hue - SKIN_LINE) < 5) return null;       // already on the line
+  return { mired: best.m * strength, tint: best.t * strength, from: sk.hue, to: best.hue };
+}
+
 /* 2. Taste: a nearest-neighbour model trained on YOUR picks. Each pick stores the photo's learned
       embedding (random-projected to 256 numbers) and the look you chose; new photos are matched to
       the photos you handled before. */
@@ -1315,7 +1499,8 @@ function describeFindings(p) {
   if (an.sky > 0) lines.push(["Sky", `${Math.round(an.sky * 100)}% of the frame`]);
   if (an.geo && an.geo.conf > 0.25) lines.push(["Lines", `vertical lines ${Math.abs(an.geo.vkeyN || 0) > 0.03 ? "converge" : "tilt"} (${Math.abs(an.geo.vkeyN || 0) > 0.03 ? Math.round(Math.abs(an.geo.vkeyN) * 100) + "% keystone" : Math.abs(an.geo.rot).toFixed(1) + "°"}), so architecture looks straighten them`]);
   const dm = n => diag.mode[n] === "failed" ? `failed (${diag.err[n] || "unknown"})` : `ok, ${((diag.ms[n] || 0) / 1000).toFixed(1)} s, ${diag.mode[n] || "?"}`;
-  lines.push(["Engine " + VERSION, `scene network ${dm("cls")}; subject network ${dm("seg")}${diag.dng ? "; RAW reader " + diag.dng : ""}`]);
+  if (an.faces && an.faces.length) lines.push(["Face map", an.lms && an.lms.length ? `${an.lms.length} face${an.lms.length > 1 ? "s" : ""} mapped with 478 points (eyes, brows, lips, teeth, jaw)${an.skinSt ? `; skin hue ${Math.round(an.skinSt.hue)}° vs natural ${SKIN_LINE}°` : ""}` : "face found but not mapped; using general skin and eye masks"]);
+  lines.push(["Engine " + VERSION, `scene network ${dm("cls")}; subject network ${dm("seg")}; face network ${dm("lm")}${diag.dng ? "; RAW reader " + diag.dng : ""}`]);
   const n = taste.picks.length; lines.push(["Your taste", n ? `learning from ${n} of your picks` : "nothing learned yet; pick looks and it adapts"]);
   return lines;
 }
@@ -1434,6 +1619,11 @@ async function selectPhoto(i) {
     $("#lookSub").textContent = "Reading your photo with a neural network…";
     await tick(); p.an = analyze(p.thumb.id); await tick();
     const [ml, seg] = await Promise.all([classifyPhoto(p.thumb.canvas), segmentPhoto(p.thumb.canvas)]); p.ml = ml; p.an.seg = seg;
+    if (p.an.faces && p.an.faces.length) {
+      $("#lookSub").textContent = "Mapping the face…"; await tick();
+      p.an.lms = await landmarksFor(p.thumb.canvas, p.an.faces);
+      if (p.an.lms.length) { try { p.an.skinSt = skinStats(toLab(p.thumb.id, null), p.an.lms); } catch (e) { p.an.skinSt = null; } }
+    }
     if (p.ml) { p.vec = embedVec(p.ml.embed); p.key = Array.from(p.vec.slice(0, 8)).map(v => Math.round(v * 1000)).join(","); }
     p.rec = recommend(p.an, null, p.ml);
   }
@@ -1614,7 +1804,7 @@ $("#search").addEventListener("input", e => {
     g.hidden = hide; head.hidden = hide;
   });
 });
-tasteLoad(); visionInit("cls"); visionInit("seg");
+tasteLoad(); visionInit("cls"); visionInit("seg"); visionInit("lm");
 $("#ver").textContent = VERSION;
-window.__darkroom = { estimateNoise, segmentPhoto, DATA, toLab, shrinkLab, renderToCanvas, tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom };
+window.__darkroom = { estimateNoise, segmentPhoto, DATA, toLab, shrinkLab, renderToCanvas, tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom, landmarksFor, visionRun, faceMasks, skinStats, diag };
 </script>
