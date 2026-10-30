@@ -1049,6 +1049,7 @@ function planRecipe(an, style, proxy) {
   r.nr = 1;
   notes.push(...solveTone(proxy, r, style.targets || { median: 0.52 }, an));
   r.retouch = retouchFor(style, an); notes.push(...retouchNotes(r.retouch, an));
+  { const pf = proFor(style, an, proxy); r.pro = pf.pro; notes.push(...pf.notes); }
   r.frame = framePrefs(style);
   return { r, notes };
 }
@@ -1203,6 +1204,101 @@ function opFace(img, rt, F, an, long) {
   return mul;
 }
 
+
+/* ============================================================ scene finishing: what pros do beyond the global sliders
+   window / lamp pull-back with an edge-snapped mask, local white balance on neutrals, highlight glare, fringe removal, night shadow noise */
+/** Held-back bright areas: compress L above `ref` only where a smooth, edge-snapped bright mask says so (no halos, no grey patches). */
+function pullHighlights(img, ref, lo, hi, k, chroma, sigma) {
+  const { w, h, L } = img, n = w * h, Lb = gauss(L, w, h, sigma), m0 = new Float32Array(n);
+  let any = 0; for (let i = 0; i < n; i++) { m0[i] = smooth(lo, hi, Lb[i]); any += m0[i]; }
+  if (any / n < 0.0015) return 0;
+  const m = guided(L, m0, w, h, 0.006, 0.0001);
+  for (let i = 0; i < n; i++) {
+    const mi = clamp(m[i], 0, 1); if (mi < 0.02) continue;
+    if (L[i] > ref) L[i] = ref + (L[i] - ref) * (1 - k * mi);
+    const c = 1 + chroma * mi; img.a[i] *= c; img.b[i] *= c;
+  }
+  return any / n;
+}
+/** Per-region colour cast of the neutral surfaces (walls, plates, paper), on a coarse grid. */
+function neutralField(lab, G) {
+  const sm = lab.w > 200 ? shrinkLab(lab, 160) : lab, { w, h } = sm, sum = { a: new Float32Array(G * G), b: new Float32Array(G * G), n: new Float32Array(G * G), t: new Float32Array(G * G) };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, c = ((y * G / h) | 0) * G + ((x * G / w) | 0); sum.t[c]++;
+    const C = Math.hypot(sm.a[i], sm.b[i]);
+    if (C < 0.036 && sm.L[i] > 0.4 && sm.L[i] < 0.95) { sum.a[c] += sm.a[i]; sum.b[c] += sm.b[i]; sum.n[c]++; }
+  }
+  const wt = new Float32Array(G * G), va = new Float32Array(G * G), vb = new Float32Array(G * G); let tw = 0, ta = 0, tb = 0;
+  for (let c = 0; c < G * G; c++) { const f = sum.n[c] / Math.max(1, sum.t[c]); if (f > 0.08 && sum.n[c] > 12) { wt[c] = Math.min(1, f * 3); va[c] = sum.a[c] / sum.n[c]; vb[c] = sum.b[c] / sum.n[c]; tw += wt[c]; ta += va[c] * wt[c]; tb += vb[c] * wt[c]; } }
+  if (tw < 3) return null;
+  const ma = ta / tw, mb = tb / tw; let sp = 0; for (let c = 0; c < G * G; c++) if (wt[c]) sp += wt[c] * Math.hypot(va[c] - ma, vb[c] - mb);
+  const fa = new Float32Array(G * G), fb = new Float32Array(G * G), wa = new Float32Array(G * G), wb = new Float32Array(G * G);
+  for (let c = 0; c < G * G; c++) { wa[c] = wt[c]; wb[c] = wt[c]; fa[c] = va[c] * wt[c]; fb[c] = vb[c] * wt[c]; }
+  const ga = gauss(fa, G, G, 1.6), gb = gauss(fb, G, G, 1.6), gw = gauss(wt, G, G, 1.6);
+  for (let c = 0; c < G * G; c++) { const q = gw[c] / (gw[c] + 0.02); fa[c] = q * (ga[c] / Math.max(gw[c], 1e-6)) + (1 - q) * ma; fb[c] = q * (gb[c] / Math.max(gw[c], 1e-6)) + (1 - q) * mb; }
+  return { a: fa, b: fb, G, ma, mb, spread: sp / tw };
+}
+function opLocalWB(img, strength) {
+  const G = 10, f = neutralField(img, G); if (!f) return;
+  const { w, h } = img, n = w * h, ua = upBilinear(f.a, G, G, w, h), ub = upBilinear(f.b, G, G, w, h);
+  for (let i = 0; i < n; i++) {
+    const d = Math.hypot(img.a[i] - ua[i], img.b[i] - ub[i]), k = (1 - smooth(0.012, 0.03, d)) * (1 - smooth(0.05, 0.09, Math.hypot(img.a[i], img.b[i]))) * strength * smooth(0.12, 0.35, img.L[i]);   // only surfaces that sit on the region's own neutral; wood and colour stay
+    if (k < 0.01) continue;
+    img.a[i] -= clamp(ua[i], -0.03, 0.03) * k; img.b[i] -= clamp(ub[i], -0.03, 0.03) * k;
+  }
+}
+/** Purple / green fringes along bright edges (lateral chromatic aberration): pull the chroma out right next to them. */
+function opDefringe(img, strength, long) {
+  const { w, h, L } = img, n = w * h, hi = new Float32Array(n);
+  for (let i = 0; i < n; i++) hi[i] = L[i] > 0.72 ? 1 : 0;
+  const hb = gauss(hi, w, h, Math.max(1.2, long / 900));
+  for (let i = 0; i < n; i++) {
+    const e = smooth(0.06, 0.2, hb[i]) * (1 - smooth(0.78, 0.96, hb[i])); if (e < 0.02) continue;
+    const C = Math.hypot(img.a[i], img.b[i]); if (C < 0.03 || C > 0.16) continue;
+    let hd = Math.atan2(img.b[i], img.a[i]) / deg; if (hd < 0) hd += 360;
+    const hw = Math.max(smooth(262, 285, hd) * (1 - smooth(335, 355, hd)), smooth(92, 105, hd) * (1 - smooth(140, 155, hd)));
+    const k = 1 - 0.8 * strength * e * hw; img.a[i] *= k; img.b[i] *= k;
+  }
+}
+function opPro(img, pro, an, long, subj) {
+  if (!pro) return;
+  if (pro.lwb > 0) opLocalWB(img, pro.lwb);
+  if (pro.pull > 0) pullHighlights(img, 0.72, 0.78, 0.93, 0.55 * pro.pull, 0.12 * pro.pull, Math.max(1.5, long / 800));
+  if (pro.lamp > 0) pullHighlights(img, 0.8, 0.86, 0.96, 0.5 * pro.lamp, 0.15 * pro.lamp, Math.max(1, long / 1200));
+  if (pro.glare > 0) pullHighlights(img, 0.86, 0.9, 0.97, 0.6 * pro.glare, 0.05 * pro.glare, 1);
+  if (pro.fringe > 0) opDefringe(img, pro.fringe, long);
+  if (pro.shadow_nr > 0) {
+    const { w, h, L } = img, n = w * h, Ls = guided(L, L, w, h, 0.006, 0.0004), as = guided(L, img.a.slice(), w, h, 0.008, 0.0004), bs = guided(L, img.b.slice(), w, h, 0.008, 0.0004);
+    for (let i = 0; i < n; i++) { const m = (1 - smooth(0.15, 0.4, L[i])) * pro.shadow_nr; L[i] += (Ls[i] - L[i]) * 0.55 * m; img.a[i] += (as[i] - img.a[i]) * 0.8 * m; img.b[i] += (bs[i] - img.b[i]) * 0.8 * m; }
+  }
+  if (pro.white_bg > 0 && subj) {
+    const n = img.w * img.h; for (let i = 0; i < n; i++) { const k = (1 - subj[i]) * pro.white_bg; img.L[i] += (0.985 - img.L[i]) * k; img.a[i] *= 1 - k; img.b[i] *= 1 - k; }
+  }
+}
+/** Which finishing steps this scene needs, decided from measurements on the proxy (not assumed). */
+function proFor(st, an, proxy) {
+  const kind = an.kind || "street", bw = st.bw || (st.recipe && st.recipe.color && st.recipe.color.bw && st.recipe.color.bw.amount > 0.5);
+  const pro = { pull: 0, lamp: 0, glare: 0, lwb: 0, fringe: 0, shadow_nr: 0, white_bg: 0 }, notes = [];
+  const bright = an.clip > 0.004 || an.lp[98] > 0.93;
+  if (kind === "interior" || kind === "architecture") {
+    if (bright) { pro.pull = kind === "interior" ? 0.9 : 0.55; notes.push("Bright windows and skylight held back with an edge-snapped mask (no grey halos)"); }
+    if (!bw) { const f = neutralField(proxy, 10); if (f && f.spread > 0.008) { pro.lwb = kind === "interior" ? 0.75 : 0.5; notes.push("Mixed light found: walls and neutrals balanced region by region, colours left warm"); } }
+    pro.fringe = 0.8;
+  } else if (kind === "landscape") { pro.fringe = 0.8; if (an.clip > 0.01) pro.pull = 0.25; }
+  else if (kind === "night") {
+    if (bright) { pro.lamp = 0.8; notes.push("Lamps and signs pulled back so they keep their shape and colour"); }
+    if (!(an.faces && an.faces.length)) { pro.shadow_nr = 0.6; notes.push("Dark areas cleaned more than the lit subject"); }
+    pro.fringe = 0.5;
+  } else if (kind === "food") {
+    pro.glare = 0.6; if (!bw) { const f = neutralField(proxy, 10); if (f && f.spread > 0.008) { pro.lwb = 0.5; notes.push("Plate and table neutrals balanced so the food stays appetising"); } }
+    notes.push("Specular glare on the food softened");
+  } else pro.fringe = 0.4;
+  if (st.id === "product_clean") { pro.white_bg = (an.seg && an.seg.coverage > 0.05 && an.seg.coverage < 0.6) ? 0.9 : 0; pro.glare = 0.7; if (pro.white_bg) notes.push("Background cleaned to white around the subject"); }
+  if (pro.fringe && !bw) notes.push("Colour fringes along bright edges removed");
+  if (bw) { pro.lwb = 0; pro.fringe = 0; }
+  return { pro, notes };
+}
+
 /* ============================================================ render a recipe on an ImageData */
 function wbFor(r, an) { return Math.abs(r.wb.mired) > 0.05 || Math.abs(r.wb.tint) > 0.05 ? wbGains(r.wb.mired, r.wb.tint) : null; }
 function cropSmall(d, w, h, r) {
@@ -1230,13 +1326,14 @@ function develop(id, r, an, fullLong) {
   opExposure(lab, ev); opFilmic(lab, r.tone, ev); opLocalTone(lab, r.tone);
   opPresence(lab, r.presence, long);
   opColor(lab, r.color);
-  let sharpMul = null;
+  let sharpMul = null, subjMask = null;
   if (r.retouch && (an0.seg || (r.retouch.lm && !warped))) {
     const sg = an0.seg, M = { subject: sg ? refineMask({ d: sg.subject, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop) : null, person: sg && r.retouch.skin_smooth > 0 ? refineMask({ d: sg.person, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop) : null, face: null };
     if (r.retouch.lm && !warped && an0.lms && an0.lms.length) { try { M.face = faceMasks(an0.lms, lab.w, lab.h, crop); } catch (e) { M.face = null; } }
-    sharpMul = opRetouch(lab, r.retouch, M, an, long) || null;
+    sharpMul = opRetouch(lab, r.retouch, M, an, long) || null; subjMask = M.subject;
   }
   opLocal(lab, r.local, an, skyMask);
+  if (r.pro) { if (r.pro.white_bg > 0 && !subjMask && an0.seg) subjMask = refineMask({ d: an0.seg.subject, w: 257, h: 257 }, lab.w, lab.h, lab.L, crop); opPro(lab, r.pro, an, long, subjMask); }
   opGrade(lab, r.color.grade); opBW(lab, r.color.bw); opCurveFade(lab, r.tone); opDesatExtremes(lab, r.tone);
   opEffects(lab, r.effects, long, 7);
   opSharpen(lab, r.detail, long, sharpMul);
@@ -1625,7 +1722,7 @@ async function selectPhoto(i) {
       if (p.an.lms.length) { try { p.an.skinSt = skinStats(toLab(p.thumb.id, null), p.an.lms); } catch (e) { p.an.skinSt = null; } }
     }
     if (p.ml) { p.vec = embedVec(p.ml.embed); p.key = Array.from(p.vec.slice(0, 8)).map(v => Math.round(v * 1000)).join(","); }
-    p.rec = recommend(p.an, null, p.ml);
+    p.rec = recommend(p.an, null, p.ml); p.an.kind = p.rec.kind;
   }
   if (!taste.ready) await tasteLoad();
   if (state.photos[state.cur] !== p) return;
@@ -1637,7 +1734,7 @@ function buildKinds(p) {
   const box = $("#kinds"); box.innerHTML = "";
   for (const k of Object.keys(KIND_LABEL)) {
     const b = document.createElement("button"); b.textContent = KIND_LABEL[k]; b.className = (p.kindPick || "auto") === k ? "on" : "";
-    b.onclick = () => { p.kindPick = k; p.rec = recommend(p.an, k === "auto" ? null : k, p.ml); buildKinds(p); buildLooks(p); renderLooks(p); };
+    b.onclick = () => { p.kindPick = k; p.rec = recommend(p.an, k === "auto" ? null : k, p.ml); p.an.kind = p.rec.kind; p.plans = new Map(); p.cache = new Map(); buildKinds(p); buildLooks(p); renderLooks(p); };
     box.appendChild(b);
   }
 }
@@ -1806,5 +1903,5 @@ $("#search").addEventListener("input", e => {
 });
 tasteLoad(); visionInit("cls"); visionInit("seg"); visionInit("lm");
 $("#ver").textContent = VERSION;
-window.__darkroom = { estimateNoise, segmentPhoto, DATA, toLab, shrinkLab, renderToCanvas, tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom, landmarksFor, visionRun, faceMasks, skinStats, diag };
+window.__darkroom = { estimateNoise, segmentPhoto, DATA, toLab, shrinkLab, renderToCanvas, tasteRecordForTest: tasteRecord, classifyPhoto, taste, tasteRank, embedVec, estimateGeometry, warpImage, state, analyze, planRecipe, develop, sampleScene, addPhotoFrom, landmarksFor, visionRun, faceMasks, skinStats, diag, opPro, neutralField, pullHighlights, proFor };
 </script>
