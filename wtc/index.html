@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WTC — Music Television</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="tv" id="tv">
+  <div class="screen" id="screen">
+    <div id="player"></div>
+    <div class="shield" id="shield"></div>
+
+    <!-- overlays -->
+    <canvas class="static" id="static"></canvas>
+    <div class="osd" id="osd" hidden>
+      <span class="osd-ch" id="osdCh"></span>
+      <span class="osd-name" id="osdName"></span>
+    </div>
+    <div class="lower" id="lower">
+      <div class="lower-logo">WTC</div>
+      <div class="lower-text">
+        <div class="lower-artist" id="lowArtist"></div>
+        <div class="lower-title" id="lowTitle"></div>
+        <div class="lower-meta" id="lowMeta"></div>
+      </div>
+    </div>
+    <div class="ident" id="ident">
+      <div class="ident-logo">WTC</div>
+      <div class="ident-sub" id="identSub"></div>
+    </div>
+    <div class="nosignal" id="nosignal" hidden>
+      <div class="bars"></div>
+      <div class="ns-text" id="nsText">NO SIGNAL</div>
+    </div>
+    <div class="scan"></div>
+
+    <!-- power-on -->
+    <button class="power" id="power" aria-label="Turn on WTC">
+      <span class="power-logo">WTC</span>
+      <span class="power-sub">MUSIC TELEVISION</span>
+      <span class="power-cta">▶ PRESS TO TUNE IN</span>
+    </button>
+  </div>
+
+  <div class="guide" id="guide" hidden>
+    <h2>Channel Guide</h2>
+    <ol id="guideList"></ol>
+  </div>
+</main>
+
+<nav class="remote" aria-label="Remote control">
+  <button id="btnPrev" title="Channel down (←/↓)">CH −</button>
+  <button id="btnNext" title="Channel up (→/↑)">CH +</button>
+  <button id="btnSkip" title="Skip video (N)">SKIP ⏭</button>
+  <button id="btnMute" title="Mute (M)">MUTE</button>
+  <button id="btnGuide" title="Guide (G)">GUIDE</button>
+  <button id="btnFull" title="Fullscreen (F)">FULL</button>
+</nav>
+<script src="channels.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
