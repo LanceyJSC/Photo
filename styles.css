@@ -131,3 +131,9 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
   .top{display:none}.stage{max-height:100dvh;margin-inline:auto;width:min(100%,calc((100dvh - 4px)*16/9))}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.yt{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;text-decoration:none;color:#000;background:var(--lime);
+  border:3px solid #000;border-radius:6px;padding:12px 14px;box-shadow:5px 5px 0 #000;transform:rotate(.5deg)}
+.yt b{font-family:var(--display);font-weight:400;font-size:20px;letter-spacing:.04em}
+.yt small{font-weight:700;font-size:13px;opacity:.8}
+.yt:active{transform:translateY(3px);box-shadow:2px 2px 0 #000}

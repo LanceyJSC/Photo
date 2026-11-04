@@ -34,7 +34,7 @@
         ok[id] = toks.length ? toks.some(t => hay.includes(t)) : true;   // drops wrong/mislabelled IDs
       }
     } catch { /* offline / CORS: leave unknown, the player's own error handler decides */ }
-    checked++; renderStatus();
+    checked++; renderStatus(); renderNow();
   }
   function verifyAll() {
     const seen = new Set(), list = [];
@@ -87,6 +87,8 @@
     const items = [`NOW ON ${c.name}`, current ? `${current[1]} · ${current[2]}` : c.tag, n ? `UP NEXT: ${n[1]} — ${n[2]}` : '', 'WTC · MUSIC TELEVISION'].filter(Boolean);
     const html = items.map(t => `<span>★ ${t.replace(/</g, '&lt;')}</span>`).join('');
     $('ticker').innerHTML = html + html;
+    const ids = c.videos.filter(v => ok[v[0]] !== false).map(v => v[0]);
+    $('ytChannel').href = 'https://www.youtube.com/watch_videos?video_ids=' + ids.join(',');
     document.querySelectorAll('.ch').forEach((b, i) => b.classList.toggle('on', i === chIdx));
   }
   function showNotice(msg) {
