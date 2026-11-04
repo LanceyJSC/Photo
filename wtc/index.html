@@ -3,61 +3,85 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0f">
 <title>WTC — Music Television</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@600;700;800&family=Permanent+Marker&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<main class="tv" id="tv">
-  <div class="screen" id="screen">
-    <div id="player"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- POWER-ON SPLASH -->
+<button class="splash" id="splash" aria-label="Tune in to WTC">
+  <span class="splash-blob b1"></span><span class="splash-blob b2"></span>
+  <span class="splash-logo"><span class="logo xl">WTC</span></span>
+  <span class="splash-sub">NON-STOP MUSIC VIDEOS</span>
+  <span class="splash-btn">▶ TUNE IN</span>
+  <span class="splash-note">🔊 sound on</span>
+</button>
+
+<div class="app" id="app">
+  <header class="top">
+    <span class="logo sm">WTC</span>
+    <span class="top-sub">MUSIC TELEVISION</span>
+    <span class="live"><i></i>LIVE</span>
+  </header>
+
+  <section class="stage" id="stage">
+    <div class="video" id="video"><div id="player"></div></div>
     <div class="shield" id="shield"></div>
 
-    <!-- overlays -->
-    <canvas class="static" id="static"></canvas>
-    <div class="osd" id="osd" hidden>
-      <span class="osd-ch" id="osdCh"></span>
-      <span class="osd-name" id="osdName"></span>
-    </div>
+    <canvas class="snow" id="snow"></canvas>
+    <div class="bug"><span class="logo xs">WTC</span></div>
+    <div class="osd" id="osd"><b id="osdNum">01</b><span id="osdName">WTC HITS</span></div>
+
     <div class="lower" id="lower">
-      <div class="lower-logo">WTC</div>
-      <div class="lower-text">
-        <div class="lower-artist" id="lowArtist"></div>
-        <div class="lower-title" id="lowTitle"></div>
-        <div class="lower-meta" id="lowMeta"></div>
-      </div>
+      <div class="lower-kicker" id="lowKick">NOW PLAYING</div>
+      <div class="lower-artist" id="lowArtist"></div>
+      <div class="lower-title" id="lowTitle"></div>
     </div>
+
     <div class="ident" id="ident">
-      <div class="ident-logo">WTC</div>
+      <div class="ident-logo logo xl">WTC</div>
       <div class="ident-sub" id="identSub"></div>
     </div>
-    <div class="nosignal" id="nosignal" hidden>
-      <div class="bars"></div>
-      <div class="ns-text" id="nsText">NO SIGNAL</div>
+
+    <button class="tapplay" id="tapplay" hidden>▶ TAP TO PLAY</button>
+
+    <div class="notice" id="notice" hidden>
+      <div class="notice-h">NO SIGNAL</div>
+      <p id="noticeMsg"></p>
+      <a id="noticeLink" target="_blank" rel="noopener">Open this video on YouTube ↗</a>
+      <button id="noticeRetry">TRY AGAIN</button>
     </div>
-    <div class="scan"></div>
+  </section>
 
-    <!-- power-on -->
-    <button class="power" id="power" aria-label="Turn on WTC">
-      <span class="power-logo">WTC</span>
-      <span class="power-sub">MUSIC TELEVISION</span>
-      <span class="power-cta">▶ PRESS TO TUNE IN</span>
-    </button>
-  </div>
+  <section class="panel">
+    <div class="now">
+      <div class="now-top"><span class="chip-ch" id="nowCh">CH 01 · WTC HITS</span><span class="year" id="nowYear"></span></div>
+      <h1 class="now-artist" id="nowArtist">—</h1>
+      <p class="now-title" id="nowTitle">Press tune in</p>
+      <p class="next"><b>UP NEXT</b> <span id="nextTxt">—</span></p>
+    </div>
 
-  <div class="guide" id="guide" hidden>
-    <h2>Channel Guide</h2>
-    <ol id="guideList"></ol>
-  </div>
-</main>
+    <div class="controls">
+      <button class="ctl" id="btnPrev" aria-label="Channel down"><span>▼</span><small>CH</small></button>
+      <button class="ctl big" id="btnPlay" aria-label="Play or pause">❚❚</button>
+      <button class="ctl" id="btnNext" aria-label="Channel up"><span>▲</span><small>CH</small></button>
+      <button class="ctl" id="btnSkip" aria-label="Skip video"><span>⏭</span><small>SKIP</small></button>
+      <button class="ctl" id="btnMute" aria-label="Mute"><span id="muteIcon">🔊</span><small>SOUND</small></button>
+      <button class="ctl" id="btnFull" aria-label="Fullscreen"><span>⛶</span><small>FULL</small></button>
+    </div>
 
-<nav class="remote" aria-label="Remote control">
-  <button id="btnPrev" title="Channel down (←/↓)">CH −</button>
-  <button id="btnNext" title="Channel up (→/↑)">CH +</button>
-  <button id="btnSkip" title="Skip video (N)">SKIP ⏭</button>
-  <button id="btnMute" title="Mute (M)">MUTE</button>
-  <button id="btnGuide" title="Guide (G)">GUIDE</button>
-  <button id="btnFull" title="Fullscreen (F)">FULL</button>
-</nav>
+    <div class="channels" id="channels" role="list"></div>
+    <p class="status" id="status"></p>
+  </section>
+
+  <footer class="ticker"><div class="ticker-track" id="ticker"></div></footer>
+</div>
+
 <script src="channels.js"></script>
 <script src="app.js"></script>
 </body>
