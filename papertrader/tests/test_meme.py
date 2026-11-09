@@ -121,11 +121,34 @@ class LiveParserTests(unittest.TestCase):
         del bad["liquidity"]
         self.assertIsNone(live.parse_pair(bad, 0))
 
-    def test_rugcheck_unknown_fails_closed(self):
-        self.assertFalse(strategy.safety_ok(live.parse_rugcheck({}), MemeConfig())[0])
-        self.assertFalse(strategy.safety_ok(live.parse_rugcheck(None), MemeConfig())[0])
-        danger = {"risks": [{"name": "Mint Authority still enabled", "level": "danger"}]}
-        self.assertFalse(strategy.safety_ok(live.parse_rugcheck(danger), MemeConfig())[0])
+    # trimmed from a real RugCheck /report response (2026-11-09)
+    REPORT = {"mintAuthority": None, "freezeAuthority": None, "rugged": False, "risks": [],
+              "transferFee": {"pct": 0}, "token_extensions": {"transferFeeConfig": None, "nonTransferable": False},
+              "knownAccounts": {"POOL": {"type": "AMM"}, "CREATOR1": {"type": "CREATOR"}},
+              "topHolders": [{"owner": "POOL", "address": "x", "pct": 80.0}, {"owner": "w1", "address": "a", "pct": 4.0},
+                             {"owner": "w2", "address": "b", "pct": 1.0}],
+              "markets": [{"lp": {"lpLockedPct": 0, "quoteUSD": 10, "baseUSD": 10}},
+                          {"lp": {"lpLockedPct": 100, "quoteUSD": 40000, "baseUSD": 41000}}]}
+
+    def test_rugcheck_real_shape_passes_and_excludes_pools(self):
+        sf = live.parse_rugcheck(self.REPORT)
+        self.assertEqual((sf.mint_revoked, sf.freeze_revoked, sf.sell_sim_ok), (True, True, True))
+        self.assertAlmostEqual(sf.top10_pct, 5.0)       # the 80% AMM pool is not a whale
+        self.assertEqual(sf.lp_locked_pct, 100)         # uses the biggest market, not the tiny one
+        self.assertTrue(strategy.safety_ok(sf, MemeConfig())[0])
+
+    def test_rugcheck_unknown_or_dangerous_fails_closed(self):
+        cfg = MemeConfig()
+        self.assertFalse(strategy.safety_ok(live.parse_rugcheck({}), cfg)[0])
+        self.assertFalse(strategy.safety_ok(live.parse_rugcheck(None), cfg)[0])
+        for change in ({"mintAuthority": "SomeKey"}, {"freezeAuthority": "SomeKey"}, {"rugged": True},
+                       {"risks": [{"name": "x", "level": "danger"}]}, {"transferFee": {"pct": 5}},
+                       {"token_extensions": {"permanentDelegate": "Key"}}):
+            rep = dict(self.REPORT, **change)
+            self.assertFalse(strategy.safety_ok(live.parse_rugcheck(rep), cfg)[0], change)
+        for key in ("mintAuthority", "risks"):
+            rep = {k: v for k, v in self.REPORT.items() if k != key}
+            self.assertFalse(strategy.safety_ok(live.parse_rugcheck(rep), cfg)[0], key)
 
 
 if __name__ == "__main__":
